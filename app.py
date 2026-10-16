@@ -1,80 +1,206 @@
 
 import os
+import re
 import pickle
-import zipfile
 from pathlib import Path
 
 import joblib
-import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
 
 
-# ---------------- PAGE CONFIG ----------------
+# =========================================================
+# CINEAURA | MOVIE RECOMMENDATION SYSTEM
+# =========================================================
+
 st.set_page_config(
-    page_title="CineAura | Movie Discovery",
+    page_title="CineAura | Discover Your Next Movie",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-BASE_DIR = Path(__file__).parent
+ROOT = Path(__file__).parent
+
+# ------------------------- THEME -------------------------
 
 st.markdown("""
 <style>
+:root {
+    --bg: #100e19;
+    --panel: #1b1729;
+    --panel2: #241d35;
+    --accent: #d9a7ff;
+    --accent2: #f0c4ff;
+    --text: #f8f4ff;
+    --muted: #bdb2ce;
+}
+
 .stApp {
-    background: linear-gradient(145deg, #100d1b, #171326, #101522);
-    color: #f7f3ff;
+    background:
+        radial-gradient(ellipse at top left, #302044 0%, transparent 38%),
+        linear-gradient(145deg, #100e19, #151324 55%, #101722);
+    color: var(--text);
 }
+
+header[data-testid="stHeader"] {
+    background: transparent;
+}
+
+section[data-testid="stSidebar"] {
+    display: none;
+}
+
 .block-container {
-    padding-top: 1.5rem;
-    max-width: 1450px;
+    max-width: 1500px;
+    padding-top: 1.4rem;
+    padding-bottom: 2rem;
 }
-h1, h2, h3, p, label {
-    color: #f7f3ff !important;
+
+h1, h2, h3, h4, p, label {
+    color: var(--text);
 }
+
 .hero {
-    padding: 28px;
-    border-radius: 22px;
-    background: linear-gradient(120deg, #37204d, #1b2847, #442344);
-    margin-bottom: 20px;
+    padding: 32px 34px;
+    border: 1px solid rgba(217,167,255,.25);
+    border-radius: 24px;
+    background:
+        linear-gradient(110deg, rgba(64,38,85,.96),
+        rgba(29,36,67,.94), rgba(58,31,63,.92));
+    box-shadow: 0 15px 45px rgba(0,0,0,.22);
+    margin-bottom: 25px;
 }
+
 .hero h1 {
-    font-size: 42px;
-    margin-bottom: 4px;
+    font-size: clamp(34px, 4vw, 49px);
+    letter-spacing: -1.3px;
+    margin: 0;
 }
+
 .hero p {
-    color: #e4d8f7 !important;
+    color: #e3d5f2 !important;
+    margin-top: 8px;
+    font-size: 16px;
 }
+
+.eyebrow {
+    color: #e4baff;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    font-size: 11px;
+    font-weight: 800;
+    margin-bottom: 9px;
+}
+
+.section-heading {
+    font-size: 25px;
+    font-weight: 750;
+    margin: 8px 0 3px;
+}
+
+.section-subtitle {
+    color: var(--muted);
+    margin-bottom: 16px;
+}
+
+div[data-testid="stTabs"] button {
+    border-radius: 12px 12px 0 0;
+    font-weight: 650;
+}
+
+div[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #edc8ff;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-color: rgba(217,167,255,.2);
+}
+
 .movie-title {
-    min-height: 3rem;
-    max-height: 3rem;
+    height: 3.15rem;
     overflow: hidden;
-    font-weight: 700;
-    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.45;
+    font-size: 15px;
+    font-weight: 750;
+    color: #fff;
+    margin-top: 10px;
 }
+
 .movie-meta {
-    min-height: 3rem;
-    color: #c7bfd8;
-    font-size: 13px;
+    height: 3.15rem;
+    overflow: hidden;
+    color: #c5bad5;
+    font-size: 12px;
+    line-height: 1.5;
+    margin-top: 3px;
 }
-div.stButton > button {
-    border-radius: 10px;
-    min-height: 38px;
-    border: 1px solid #66517d;
+
+.movie-rating {
+    height: 1.6rem;
+    color: #f3d59c;
+    font-size: 12px;
+    margin-top: 5px;
 }
-.poster-placeholder {
+
+.poster-fallback {
     aspect-ratio: 2 / 3;
+    width: 100%;
     border-radius: 12px;
-    background: #29223a;
+    background: linear-gradient(145deg, #302440, #191b2e);
+    border: 1px solid #51405f;
     display: flex;
     justify-content: center;
     align-items: center;
     text-align: center;
-    padding: 12px;
-    color: #d6c9e7;
+    padding: 14px;
+    color: #d8c5e8;
+    font-weight: 700;
+    overflow: hidden;
 }
+
+div.stButton > button {
+    border-radius: 10px;
+    min-height: 36px;
+    padding: 5px 3px;
+    font-size: 12px;
+    white-space: nowrap;
+    border: 1px solid rgba(217,167,255,.22);
+    background: #211b30;
+    color: #f8f4ff;
+}
+
+div.stButton > button:hover {
+    border-color: #d9a7ff;
+    color: #f0c4ff;
+}
+
+div[data-testid="stImage"] img {
+    border-radius: 12px;
+    object-fit: cover;
+}
+
+div[data-testid="stSelectbox"],
+div[data-testid="stTextInput"],
+div[data-testid="stMultiSelect"] {
+    border-radius: 12px;
+}
+
+div[data-testid="stMetric"] {
+    background: rgba(36,29,53,.72);
+    padding: 13px;
+    border-radius: 14px;
+    border: 1px solid rgba(217,167,255,.12);
+}
+
+hr {
+    border-color: rgba(217,167,255,.17);
+}
+
 footer {
     visibility: hidden;
 }
@@ -82,336 +208,336 @@ footer {
 """, unsafe_allow_html=True)
 
 
-# ---------------- TMDB SETTINGS ----------------
+# ------------------------- TMDB -------------------------
+
 try:
-    TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", "")
+    TMDB_KEY = st.secrets.get("TMDB_API_KEY", "")
 except Exception:
-    TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
+    TMDB_KEY = os.getenv("TMDB_API_KEY", "")
 
 
-# ---------------- LOAD FILES SAFELY ----------------
-def load_pickle_or_joblib(filename):
-    """Load a saved artifact without crashing the whole app."""
-    path = BASE_DIR / filename
+@st.cache_data(ttl=86400, show_spinner=False)
+def tmdb_movie_info(title, year, api_key):
+    """Return a poster URL and original language from TMDB."""
+    if not api_key:
+        return None, None
 
-    if not path.exists():
-        return None
+    search_title = re.sub(r"\s*\(\d{4}\)\s*$", "", str(title)).strip()
 
-    # Try joblib first, then ordinary pickle.
-    for loader in (joblib.load, pickle.load):
-        try:
-            if loader == pickle.load:
-                with open(path, "rb") as file:
-                    return pickle.load(file)
-            return joblib.load(path)
-        except Exception:
-            continue
+    try:
+        params = {
+            "api_key": api_key,
+            "query": search_title,
+            "include_adult": "false",
+        }
+        if year:
+            params["year"] = int(year)
 
-    return None
+        response = requests.get(
+            "https://api.themoviedb.org/3/search/movie",
+            params=params,
+            timeout=7,
+        )
+        response.raise_for_status()
 
+        results = response.json().get("results", [])
+        if not results:
+            return None, None
+
+        target = search_title.casefold()
+        chosen = next(
+            (
+                item for item in results
+                if str(item.get("title", "")).casefold() == target
+            ),
+            results[0],
+        )
+
+        poster_path = chosen.get("poster_path")
+        poster_url = (
+            "https://image.tmdb.org/t/p/w342" + poster_path
+            if poster_path else None
+        )
+
+        return poster_url, chosen.get("original_language")
+
+    except Exception:
+        return None, None
+
+
+# ------------------------- DATA LOADING -------------------------
 
 @st.cache_data(show_spinner=False)
 def load_movies():
-    path = BASE_DIR / "movies_features.pkl"
+    path = ROOT / "movies_features.pkl"
 
     if not path.exists():
         return pd.DataFrame()
 
     try:
-        movies = pd.read_pickle(path)
+        df = pd.read_pickle(path)
     except Exception:
-        movies = load_pickle_or_joblib("movies_features.pkl")
+        try:
+            df = joblib.load(path)
+        except Exception:
+            try:
+                with open(path, "rb") as file:
+                    df = pickle.load(file)
+            except Exception:
+                return pd.DataFrame()
 
-    if not isinstance(movies, pd.DataFrame):
+    if not isinstance(df, pd.DataFrame):
         return pd.DataFrame()
 
-    movies = movies.copy()
+    df = df.copy()
 
-    if "movieId" not in movies.columns:
-        movies["movieId"] = range(1, len(movies) + 1)
+    if "movieId" not in df.columns:
+        return pd.DataFrame()
 
-    for col in ["title", "genres", "tags_text", "content"]:
-        if col not in movies.columns:
-            movies[col] = ""
+    for column in ["title", "genres", "content", "tags_text"]:
+        if column not in df.columns:
+            df[column] = ""
+        df[column] = df[column].fillna("").astype(str)
 
-        movies[col] = movies[col].fillna("").astype(str)
+    df["movieId"] = pd.to_numeric(df["movieId"], errors="coerce")
+    df = df.dropna(subset=["movieId"])
+    df["movieId"] = df["movieId"].astype(int)
 
-    movies["movieId"] = pd.to_numeric(
-        movies["movieId"], errors="coerce"
-    )
-    movies = movies.dropna(subset=["movieId"])
-    movies["movieId"] = movies["movieId"].astype(int)
-
-    return movies.drop_duplicates("movieId").reset_index(drop=True)
+    return df.drop_duplicates("movieId").reset_index(drop=True)
 
 
 @st.cache_data(show_spinner=False)
 def load_ratings():
-    csv_path = BASE_DIR / "ratings.csv"
+    path = ROOT / "ratings.csv"
 
-    if csv_path.exists():
+    if path.exists():
         try:
-            return pd.read_csv(csv_path)
+            return pd.read_csv(path)
         except Exception:
             pass
 
-    zip_path = BASE_DIR / "ml-latest-small.zip"
+    zip_path = ROOT / "ml-latest-small.zip"
 
     if zip_path.exists():
         try:
+            import zipfile
             with zipfile.ZipFile(zip_path) as archive:
-                with archive.open("ml-latest-small/ratings.csv") as file:
+                candidate = next(
+                    name for name in archive.namelist()
+                    if name.endswith("ratings.csv")
+                )
+                with archive.open(candidate) as file:
                     return pd.read_csv(file)
         except Exception:
             pass
 
-    return pd.DataFrame(
-        columns=["userId", "movieId", "rating", "timestamp"]
-    )
+    return pd.DataFrame(columns=["movieId", "rating", "userId"])
 
 
-movies = load_movies()
-ratings = load_ratings()
+def load_artifact(filename):
+    """Try supported loaders; a broken artifact won't crash the app."""
+    path = ROOT / filename
 
-if movies.empty:
-    st.error(
-        "movies_features.pkl missing or unreadable. "
-        "Upload the correct movies_features.pkl file to your GitHub repository."
-    )
-    st.stop()
-
-
-# Load only the neighbor cache needed for recommendations.
-# The other model artifacts are not loaded here, avoiding the reported
-# user_movie_matrix.pkl UnpicklingError.
-neighbor_cache = load_pickle_or_joblib("cf_neighbor_cache.pkl")
-
-
-# ---------------- DATA HELPERS ----------------
-def extract_year(title):
-    import re
-    match = re.search(r"\((\d{4})\)\s*$", str(title))
-    return int(match.group(1)) if match else None
-
-
-def clean_title(title):
-    import re
-    return re.sub(r"\s*\(\d{4}\)\s*$", "", str(title)).strip()
-
-
-def movie_rating(movie_id):
-    if ratings.empty or not {"movieId", "rating"}.issubset(ratings.columns):
-        return None, 0
-
-    subset = ratings[ratings["movieId"] == movie_id]
-
-    if subset.empty:
-        return None, 0
-
-    return round(float(subset["rating"].mean()), 1), int(len(subset))
-
-
-def get_movie_genres(movie):
-    genres = str(movie.get("genres", ""))
-    return [
-        genre for genre in genres.split("|")
-        if genre and genre.lower() != "(no genres listed)"
-    ]
-
-
-# ---------------- TMDB POSTERS ----------------
-@st.cache_data(ttl=86400, show_spinner=False)
-def find_poster(title, year, api_key):
-    if not api_key:
+    if not path.exists():
         return None
 
-    query = clean_title(title)
+    try:
+        return joblib.load(path)
+    except Exception:
+        pass
 
     try:
-        response = requests.get(
-            "https://api.themoviedb.org/3/search/movie",
-            params={
-                "api_key": api_key,
-                "query": query,
-                "year": year if year else None,
-                "include_adult": "false",
-            },
-            timeout=8,
-        )
-        response.raise_for_status()
-        results = response.json().get("results", [])
-
-        if not results:
-            return None
-
-        # Search results are matched by title/year where possible.
-        target = query.lower()
-        chosen = None
-
-        for item in results:
-            if item.get("title", "").lower() == target:
-                chosen = item
-                break
-
-        if chosen is None:
-            chosen = results[0]
-
-        poster_path = chosen.get("poster_path")
-
-        if not poster_path:
-            return None
-
-        return "https://image.tmdb.org/t/p/w342" + poster_path
-
+        with open(path, "rb") as file:
+            return pickle.load(file)
     except Exception:
         return None
 
 
-def poster_for(movie):
-    year = extract_year(movie["title"])
-    return find_poster(movie["title"], year, TMDB_API_KEY)
+movies = load_movies()
+ratings = load_ratings()
+neighbor_cache = load_artifact("cf_neighbor_cache.pkl")
+
+if movies.empty:
+    st.error(
+        "Could not load movies_features.pkl. "
+        "Please check that the correct file is in your GitHub repository."
+    )
+    st.stop()
 
 
-# ---------------- SESSION STATE ----------------
-if "watchlist" not in st.session_state:
-    st.session_state.watchlist = []
+# ------------------------- SESSION STATE -------------------------
 
-if "reactions" not in st.session_state:
-    st.session_state.reactions = {}
+defaults = {
+    "watchlist": [],
+    "reactions": {},
+    "favourites": [],
+}
 
-if "notifications" not in st.session_state:
-    st.session_state.notifications = []
-
-
-def add_notification(message):
-    st.session_state.notifications.insert(0, message)
-    st.session_state.notifications = st.session_state.notifications[:30]
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
-def react(movie_id, title, action):
+# ------------------------- MOVIE HELPERS -------------------------
+
+def get_year(title):
+    match = re.search(r"\((\d{4})\)\s*$", str(title))
+    return int(match.group(1)) if match else None
+
+
+def display_title(title):
+    return re.sub(r"\s*\(\d{4}\)\s*$", "", str(title)).strip()
+
+
+def genres_of(movie):
+    genres = str(movie.get("genres", ""))
+    return [
+        g for g in genres.split("|")
+        if g and g.lower() != "(no genres listed)"
+    ]
+
+
+def rating_summary(movie_id):
+    if ratings.empty:
+        return None, 0
+
+    if not {"movieId", "rating"}.issubset(ratings.columns):
+        return None, 0
+
+    rows = ratings[ratings["movieId"] == int(movie_id)]
+
+    if rows.empty:
+        return None, 0
+
+    return round(float(rows["rating"].mean()), 1), len(rows)
+
+
+def get_poster(movie):
+    return tmdb_movie_info(
+        movie["title"],
+        get_year(movie["title"]),
+        TMDB_KEY,
+    )[0]
+
+
+def notify_action(title, action):
+    st.session_state["last_notice"] = f"{action}: {title}"
+
+
+def handle_reaction(movie_id, title, action):
     movie_id = int(movie_id)
 
-    if action == "❤️ Watchlist":
-        if movie_id not in st.session_state.watchlist:
-            st.session_state.watchlist.append(movie_id)
-            add_notification(f"Added to Watchlist: {title}")
-        else:
+    if action == "❤️":
+        if movie_id in st.session_state.watchlist:
             st.session_state.watchlist.remove(movie_id)
-            add_notification(f"Removed from Watchlist: {title}")
+            notify_action(title, "Removed from Watchlist")
+        else:
+            st.session_state.watchlist.append(movie_id)
+            notify_action(title, "Added to Watchlist")
 
     else:
         st.session_state.reactions[movie_id] = action
-        add_notification(f"{action} — {title}")
+        notify_action(title, f"Reaction saved ({action})")
 
     st.rerun()
 
 
-# ---------------- RECOMMENDATIONS ----------------
-def genre_fallback(movie_id=None, count=20):
-    """Fallback recommendations using genre overlap."""
-    source = None
+# ------------------------- RECOMMENDER -------------------------
 
-    if movie_id is not None:
-        matches = movies[movies["movieId"] == int(movie_id)]
-        if not matches.empty:
-            source = matches.iloc[0]
+def genre_recommendations(seed_ids=None, count=20):
+    """Fallback based on favourite movie genres."""
+    seed_ids = seed_ids or []
+    seeds = movies[movies["movieId"].isin(seed_ids)]
 
-    if source is not None:
-        source_genres = set(get_movie_genres(source))
+    preferred_genres = set()
+    for _, movie in seeds.iterrows():
+        preferred_genres.update(genres_of(movie))
 
-        def overlap(row):
-            return len(source_genres & set(get_movie_genres(row)))
+    pool = movies[
+        ~movies["movieId"].isin(seed_ids)
+        & ~movies["movieId"].isin(st.session_state.watchlist)
+    ].copy()
 
-        candidates = movies[movies["movieId"] != int(movie_id)].copy()
-        candidates["_score"] = candidates.apply(overlap, axis=1)
-        candidates = candidates.sort_values(
+    if preferred_genres:
+        pool["_score"] = pool["genres"].apply(
+            lambda value: len(
+                preferred_genres
+                & set(
+                    g for g in str(value).split("|")
+                    if g and g.lower() != "(no genres listed)"
+                )
+            )
+        )
+        pool = pool.sort_values(
             ["_score", "title"], ascending=[False, True]
         )
     else:
-        candidates = movies.copy()
-        candidates["_score"] = 0
+        pool["_score"] = 0
+        pool = pool.sort_values("title")
 
-    candidates = candidates[
-        ~candidates["movieId"].isin(st.session_state.watchlist)
-    ]
-
-    return candidates.head(count).drop(
-        columns=["_score"], errors="ignore"
-    )
+    return pool.drop(columns="_score", errors="ignore").head(count)
 
 
-def get_recommendations(count=20):
-    """Use the saved neighbor cache when its format is supported."""
-    cache = neighbor_cache
+def saved_model_recommendations(seed_ids, count=20):
+    """
+    Expected cache format:
+    {movieId: [(similar_movieId, similarity_score), ...]}
+    """
+    if not isinstance(neighbor_cache, dict) or not seed_ids:
+        return pd.DataFrame()
 
-    if isinstance(cache, dict) and not ratings.empty:
-        try:
-            # Use the most active user as a simple demonstration profile.
-            if "userId" in ratings.columns and "rating" in ratings.columns:
-                user_counts = ratings.groupby("userId")["rating"].count()
-                user_id = int(user_counts.idxmax())
+    scores = {}
 
-                liked = ratings[
-                    (ratings["userId"] == user_id)
-                    & (ratings["rating"] >= 4.0)
-                ]["movieId"].astype(int).tolist()
+    try:
+        for seed_id in seed_ids:
+            neighbors = neighbor_cache.get(int(seed_id), [])
 
-                seen = set(
-                    ratings[ratings["userId"] == user_id]["movieId"].astype(int)
-                )
+            if isinstance(neighbors, dict):
+                neighbors = list(neighbors.items())
 
-                scores = {}
+            for item in neighbors:
+                if not isinstance(item, (list, tuple)) or len(item) < 2:
+                    continue
 
-                for liked_id in liked:
-                    neighbors = cache.get(liked_id, [])
+                candidate_id, score = item[0], item[1]
 
-                    if isinstance(neighbors, dict):
-                        neighbors = list(neighbors.items())
+                try:
+                    candidate_id = int(candidate_id)
+                    score = float(score)
+                except (TypeError, ValueError):
+                    continue
 
-                    for neighbor in neighbors:
-                        if isinstance(neighbor, (tuple, list)) and len(neighbor) >= 2:
-                            candidate_id, similarity = neighbor[0], neighbor[1]
-                        else:
-                            continue
+                if candidate_id in seed_ids:
+                    continue
 
-                        try:
-                            candidate_id = int(candidate_id)
-                            similarity = float(similarity)
-                        except (ValueError, TypeError):
-                            continue
+                if candidate_id in st.session_state.watchlist:
+                    continue
 
-                        if candidate_id not in seen:
-                            scores[candidate_id] = (
-                                scores.get(candidate_id, 0) + similarity
-                            )
+                scores[candidate_id] = scores.get(candidate_id, 0.0) + score
 
-                if scores:
-                    ordered_ids = [
-                        movie_id for movie_id, score in
-                        sorted(scores.items(), key=lambda item: item[1], reverse=True)
-                    ]
-                    result = movies[
-                        movies["movieId"].isin(ordered_ids)
-                    ].copy()
+        if not scores:
+            return pd.DataFrame()
 
-                    rank = {movie_id: i for i, movie_id in enumerate(ordered_ids)}
-                    result["_rank"] = result["movieId"].map(rank)
-                    result = result.sort_values("_rank").drop(columns="_rank")
-                    result = result[
-                        ~result["movieId"].isin(st.session_state.watchlist)
-                    ]
+        ordered_ids = [
+            movie_id for movie_id, _ in
+            sorted(scores.items(), key=lambda pair: pair[1], reverse=True)
+        ]
 
-                    if not result.empty:
-                        return result.head(count)
+        result = movies[movies["movieId"].isin(ordered_ids)].copy()
+        order_map = {movie_id: i for i, movie_id in enumerate(ordered_ids)}
+        result["_rank"] = result["movieId"].map(order_map)
 
-        except Exception:
-            pass
+        return result.sort_values("_rank").drop(
+            columns="_rank"
+        ).head(count)
 
-    return genre_fallback(count=count)
+    except Exception:
+        return pd.DataFrame()
 
 
-# ---------------- MOVIE CARDS ----------------
-def render_movie_grid(data, section_key="movies", columns_per_row=5):
+# ------------------------- MOVIE CARD GRID -------------------------
+
+def render_grid(data, prefix="movies", columns_per_row=5):
     if data is None or data.empty:
         st.info("No movies found for this selection.")
         return
@@ -419,234 +545,342 @@ def render_movie_grid(data, section_key="movies", columns_per_row=5):
     data = data.drop_duplicates("movieId").reset_index(drop=True)
 
     for start in range(0, len(data), columns_per_row):
-        row = data.iloc[start:start + columns_per_row]
-        cols = st.columns(columns_per_row)
+        chunk = data.iloc[start:start + columns_per_row]
+        columns = st.columns(columns_per_row, gap="medium")
 
-        for col, (_, movie) in zip(cols, row.iterrows()):
+        for col, (_, movie) in zip(columns, chunk.iterrows()):
             movie_id = int(movie["movieId"])
             title = str(movie["title"])
-            year = extract_year(title)
-            genres = ", ".join(get_movie_genres(movie)) or "Genre unavailable"
-            rating, votes = movie_rating(movie_id)
+            year = get_year(title)
+            movie_genres = ", ".join(genres_of(movie)) or "Genre unavailable"
+            average, vote_count = rating_summary(movie_id)
 
             with col:
-                st.markdown('<div class="movie-card">', unsafe_allow_html=True)
+                with st.container(border=True):
+                    poster = get_poster(movie)
 
-                poster_url = poster_for(movie)
+                    if poster:
+                        st.image(poster, use_container_width=True)
+                    else:
+                        st.markdown(
+                            '<div class="poster-fallback">'
+                            '🎬<br>Poster unavailable'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
 
-                if poster_url:
-                    st.image(poster_url, use_container_width=True)
-                else:
                     st.markdown(
-                        f'<div class="poster-placeholder">{clean_title(title)}</div>',
+                        f'<div class="movie-title">{display_title(title)}</div>',
                         unsafe_allow_html=True,
                     )
 
-                st.markdown(
-                    f'<div class="movie-title">{clean_title(title)}</div>',
-                    unsafe_allow_html=True,
-                )
+                    st.markdown(
+                        f'<div class="movie-meta">'
+                        f'{year if year else "Year unavailable"}'
+                        f'<br>{movie_genres}</div>',
+                        unsafe_allow_html=True,
+                    )
 
-                year_text = str(year) if year else "Year unavailable"
-                rating_text = (
-                    f"⭐ {rating}/5 · {votes:,} ratings"
-                    if rating is not None
-                    else "⭐ Rating unavailable"
-                )
+                    if average is not None:
+                        rating_label = f"⭐ {average}/5 · {vote_count:,} ratings"
+                    else:
+                        rating_label = "⭐ Rating unavailable"
 
-                st.markdown(
-                    f'<div class="movie-meta">{year_text}<br>{genres}</div>',
-                    unsafe_allow_html=True,
-                )
-                st.caption(rating_text)
+                    st.markdown(
+                        f'<div class="movie-rating">{rating_label}</div>',
+                        unsafe_allow_html=True,
+                    )
 
-                current = st.session_state.reactions.get(movie_id)
-                if current:
-                    st.caption(f"Your reaction: {current}")
+                    if movie_id in st.session_state.reactions:
+                        st.caption(
+                            f"Your reaction: "
+                            f"{st.session_state.reactions[movie_id]}"
+                        )
 
-                c1, c2 = st.columns(2)
+                    # ONE compact reaction row per movie.
+                    r1, r2, r3, r4 = st.columns(4, gap="small")
 
-                with c1:
-                    if st.button(
-                        "👍 Like",
-                        key=f"{section_key}_like_{movie_id}",
-                        use_container_width=True,
-                    ):
-                        react(movie_id, title, "👍 Like")
+                    with r1:
+                        if st.button(
+                            "👍",
+                            key=f"{prefix}_like_{movie_id}",
+                            help="Like",
+                            use_container_width=True,
+                        ):
+                            handle_reaction(movie_id, title, "👍")
 
-                    if st.button(
-                        "❤️ Watchlist",
-                        key=f"{section_key}_watch_{movie_id}",
-                        use_container_width=True,
-                    ):
-                        react(movie_id, title, "❤️ Watchlist")
+                    with r2:
+                        if st.button(
+                            "👎",
+                            key=f"{prefix}_dislike_{movie_id}",
+                            help="Dislike",
+                            use_container_width=True,
+                        ):
+                            handle_reaction(movie_id, title, "👎")
 
-                with c2:
-                    if st.button(
-                        "👎 Dislike",
-                        key=f"{section_key}_dislike_{movie_id}",
-                        use_container_width=True,
-                    ):
-                        react(movie_id, title, "👎 Dislike")
+                    with r3:
+                        saved = movie_id in st.session_state.watchlist
+                        if st.button(
+                            "❤️" if not saved else "💜",
+                            key=f"{prefix}_watch_{movie_id}",
+                            help="Add to / remove from Watchlist",
+                            use_container_width=True,
+                        ):
+                            handle_reaction(movie_id, title, "❤️")
 
-                    if st.button(
-                        "🔥 Hype",
-                        key=f"{section_key}_hype_{movie_id}",
-                        use_container_width=True,
-                    ):
-                        react(movie_id, title, "🔥 Hype")
+                    with r4:
+                        if st.button(
+                            "🔥",
+                            key=f"{prefix}_hype_{movie_id}",
+                            help="Hype",
+                            use_container_width=True,
+                        ):
+                            handle_reaction(movie_id, title, "🔥")
 
-                st.markdown("</div>", unsafe_allow_html=True)
 
+# =========================================================
+# HEADER
+# =========================================================
 
-# ---------------- HERO ----------------
 st.markdown("""
 <div class="hero">
+    <div class="eyebrow">YOUR PERSONAL MOVIE UNIVERSE</div>
     <h1>🎬 CineAura</h1>
-    <p>Find your next favourite movie. Discover stories that match your vibe.</p>
+    <p>Discover stories. Find your vibe. Fall in love with your next movie.</p>
 </div>
 """, unsafe_allow_html=True)
 
 
-# ---------------- SPOTLIGHT STRIP ----------------
-st.subheader("✨ Spotlight Movies")
-st.caption("A handpicked-looking discovery strip powered by your movie dataset.")
+# ------------------------- SPOTLIGHT -------------------------
+
+st.markdown(
+    '<div class="section-heading">✨ Spotlight</div>'
+    '<div class="section-subtitle">'
+    'A quick look at movies from your catalogue.'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 spotlight = movies.copy()
-spotlight["_year"] = spotlight["title"].apply(extract_year)
+spotlight["_year"] = spotlight["title"].apply(get_year)
 spotlight = spotlight.sort_values(
     "_year", ascending=False, na_position="last"
 ).head(5)
 
-if spotlight.empty:
-    spotlight = movies.head(5)
+render_grid(spotlight, prefix="spotlight", columns_per_row=5)
 
-render_movie_grid(spotlight, section_key="spotlight", columns_per_row=5)
-
-if not TMDB_API_KEY:
-    st.caption(
-        "Posters are loaded automatically when TMDB_API_KEY is configured. "
-        "Without the key, poster images may be unavailable."
-    )
+st.divider()
 
 
-# ---------------- NAVIGATION ----------------
-tabs = st.tabs([
+# =========================================================
+# FOUR MAIN TABS
+# =========================================================
+
+discover_tab, foryou_tab, genre_tab, watchlist_tab = st.tabs([
     "🔎 Discover",
     "✨ For You",
     "🎭 By Genre",
     "❤️ Your Watchlist",
-    "🔔 Notifications",
 ])
 
 
-# ---------------- DISCOVER ----------------
-with tabs[0]:
-    st.subheader("Discover Movies")
+# ------------------------- DISCOVER -------------------------
 
-    genres_available = sorted({
+with discover_tab:
+    st.markdown(
+        '<div class="section-heading">Discover Movies</div>'
+        '<div class="section-subtitle">'
+        'Search the catalogue and find something worth watching.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    all_genres = sorted({
         genre
-        for values in movies["genres"].fillna("").astype(str)
-        for genre in values.split("|")
+        for value in movies["genres"].fillna("").astype(str)
+        for genre in value.split("|")
         if genre and genre.lower() != "(no genres listed)"
     })
 
-    c1, c2 = st.columns([2, 1])
+    search_col, genre_col = st.columns([1.5, 1])
 
-    with c1:
-        search_text = st.text_input(
-            "Search by movie title",
-            placeholder="e.g. Toy Story, Jumanji...",
-            key="discover_search",
+    with search_col:
+        search_query = st.text_input(
+            "Search movies",
+            placeholder="Type a movie title...",
+            key="discover_query",
         )
 
-    with c2:
-        selected_genre = st.selectbox(
-            "Filter by genre",
-            ["All genres"] + genres_available,
+    with genre_col:
+        discover_genre = st.selectbox(
+            "Genre",
+            ["All genres"] + all_genres,
             key="discover_genre",
         )
 
-    discover = movies.copy()
+    discover_data = movies.copy()
 
-    if search_text.strip():
-        discover = discover[
-            discover["title"].str.contains(
-                search_text.strip(), case=False, na=False, regex=False
+    if search_query.strip():
+        discover_data = discover_data[
+            discover_data["title"].str.contains(
+                search_query.strip(),
+                case=False,
+                na=False,
+                regex=False,
             )
         ]
 
-    if selected_genre != "All genres":
-        discover = discover[
-            discover["genres"].str.contains(
-                selected_genre, case=False, na=False, regex=False
+    if discover_genre != "All genres":
+        discover_data = discover_data[
+            discover_data["genres"].str.contains(
+                discover_genre,
+                case=False,
+                na=False,
+                regex=False,
             )
         ]
 
-    st.caption(f"{len(discover):,} matching movies")
-    render_movie_grid(discover.head(50), section_key="discover")
+    st.caption(f"{len(discover_data):,} movies found")
+    render_grid(discover_data.head(40), prefix="discover")
 
 
-# ---------------- FOR YOU ----------------
-with tabs[1]:
-    st.subheader("✨ Recommended for You")
-    st.write(
-        "Recommendations use the saved neighbor cache when compatible. "
-        "Otherwise, similar-genre movies are shown."
+# ------------------------- FOR YOU -------------------------
+
+with foryou_tab:
+    st.markdown(
+        '<div class="section-heading">Made for Your Taste ✨</div>'
+        '<div class="section-subtitle">'
+        'Choose favourite movies to personalise your recommendations.'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
-    recommendations = get_recommendations(30)
-    render_movie_grid(recommendations, section_key="for_you")
-
-
-# ---------------- BY GENRE ----------------
-with tabs[2]:
-    st.subheader("Explore by Genre")
-
-    chosen = st.selectbox(
-        "Choose a genre",
-        ["Select a genre"] + genres_available,
-        key="genre_tab_select",
+    movie_options = dict(
+        zip(movies["title"], movies["movieId"].astype(int))
     )
 
-    if chosen != "Select a genre":
-        genre_movies = movies[
-            movies["genres"].str.contains(
-                chosen, case=False, na=False, regex=False
+    selected_titles = st.multiselect(
+        "Your favourite movies (up to 10)",
+        options=list(movie_options.keys()),
+        max_selections=10,
+        key="favourite_movies_select",
+        placeholder="Choose movies you enjoy...",
+    )
+
+    selected_ids = [
+        int(movie_options[title]) for title in selected_titles
+    ]
+
+    st.session_state.favourites = selected_ids
+
+    number_to_show = st.slider(
+        "Number of recommendations",
+        min_value=5,
+        max_value=30,
+        value=10,
+        step=5,
+        key="recommendation_count",
+    )
+
+    if selected_ids:
+        result = saved_model_recommendations(
+            selected_ids, number_to_show
+        )
+
+        if result.empty:
+            result = genre_recommendations(
+                selected_ids, number_to_show
             )
-        ].head(30)
+            st.caption(
+                "Showing genre-based matches because the saved neighbour "
+                "cache did not return compatible recommendations."
+            )
+        else:
+            st.caption("Recommendations generated from the saved neighbour cache.")
 
-        render_movie_grid(genre_movies, section_key="genre")
-
-
-# ---------------- WATCHLIST ----------------
-with tabs[3]:
-    st.subheader("❤️ Your Watchlist")
-
-    # Only movies explicitly saved by the user appear here.
-    watchlist_ids = st.session_state.watchlist
-
-    if not watchlist_ids:
-        st.info("Your Watchlist is empty. Press ❤️ Watchlist on a movie to save it.")
     else:
-        saved = movies[movies["movieId"].isin(watchlist_ids)]
-        render_movie_grid(saved, section_key="watchlist")
+        result = genre_recommendations(
+            count=number_to_show
+        )
+        st.caption(
+            "Choose favourite movies above for more personalised recommendations."
+        )
+
+    render_grid(result, prefix="foryou")
 
 
-# ---------------- NOTIFICATIONS ----------------
-with tabs[4]:
-    st.subheader("🔔 Notifications")
+# ------------------------- BY GENRE -------------------------
 
-    if not st.session_state.notifications:
-        st.info("No notifications yet. Your movie reactions will appear here.")
+with genre_tab:
+    st.markdown(
+        '<div class="section-heading">Explore by Genre 🎭</div>'
+        '<div class="section-subtitle">'
+        'Pick a mood and explore movies from that category.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    genre_choice = st.selectbox(
+        "Choose your movie vibe",
+        all_genres,
+        key="genre_explorer",
+        placeholder="Select a genre...",
+    )
+
+    genre_results = movies[
+        movies["genres"].str.contains(
+            genre_choice,
+            case=False,
+            na=False,
+            regex=False,
+        )
+    ].copy()
+
+    st.caption(f"{len(genre_results):,} movies in this genre")
+    render_grid(genre_results.head(30), prefix="genre")
+
+
+# ------------------------- WATCHLIST -------------------------
+
+with watchlist_tab:
+    st.markdown(
+        '<div class="section-heading">Your Watchlist ❤️</div>'
+        '<div class="section-subtitle">'
+        'Only the movies you saved appear here.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    saved_ids = st.session_state.watchlist
+
+    if not saved_ids:
+        st.info(
+            "Your Watchlist is empty. Tap ❤️ on a movie card to save it here."
+        )
     else:
-        for message in st.session_state.notifications:
-            st.markdown(f"- {message}")
+        saved_movies = movies[
+            movies["movieId"].isin(saved_ids)
+        ].copy()
+
+        st.caption(f"{len(saved_movies)} saved movies")
+        render_grid(saved_movies, prefix="watchlist")
 
 
-# ---------------- FOOTER ----------------
+# ------------------------- FOOTER -------------------------
+
 st.divider()
-st.caption("Built by Devadharshini Murugan")
+
+last_notice = st.session_state.get("last_notice")
+if last_notice:
+    st.caption(f"Recent activity · {last_notice}")
+
+st.markdown(
+    "<div style='text-align:center;color:#bdb2ce;padding:10px'>"
+    "CineAura · Built by Devadharshini Murugan"
+    "</div>",
+    unsafe_allow_html=True,
+)
+
 st.caption(
     "This product uses the TMDB API but is not endorsed or certified by TMDB."
 )
