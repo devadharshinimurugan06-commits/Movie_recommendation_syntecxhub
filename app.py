@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 import re
 import html
 import pickle
@@ -14,9 +14,25 @@ import streamlit as st
 # Local dataset and saved artifacts only. No external APIs.
 # =========================================================
 
+# ---------------------------------------------------------
+# EMOJI / SYMBOL CONSTANTS (Unicode escapes = always render
+# correctly, regardless of how the file was saved)
+# ---------------------------------------------------------
+CLAPPER = "\U0001F3AC"          # 🎬
+SEARCH = "\U0001F50E"           # 🔎
+SPARKLES = "\u2728"             # ✨
+MASKS = "\U0001F3AD"            # 🎭
+HEART = "\u2764\ufe0f"          # ❤️
+PURPLE_HEART = "\U0001F49C"     # 💜
+THUMBS_UP = "\U0001F44D"        # 👍
+THUMBS_DOWN = "\U0001F44E"      # 👎
+FIRE = "\U0001F525"             # 🔥
+STAR = "\u2605"                 # ★
+DOT = "\u00b7"                  # ·
+
 st.set_page_config(
     page_title="CineAura | Movie Discovery",
-    page_icon="🎬",
+    page_icon=CLAPPER,
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -60,6 +76,8 @@ h1, h2, h3, h4, p, label {
     letter-spacing: -1px;
     margin: 0;
     color: #ffffff;
+    font-family: "Source Sans Pro", "Segoe UI", "Segoe UI Emoji",
+                 "Apple Color Emoji", "Noto Color Emoji", sans-serif;
 }
 .hero p {
     color: #c8c8c8 !important;
@@ -86,6 +104,12 @@ h1, h2, h3, h4, p, label {
 div[data-testid="stTabs"] button {
     border-radius: 10px 10px 0 0;
     font-weight: 650;
+    font-family: "Source Sans Pro", "Segoe UI", "Segoe UI Emoji",
+                 "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+}
+div[data-testid="stTabs"] button p {
+    font-family: "Source Sans Pro", "Segoe UI", "Segoe UI Emoji",
+                 "Apple Color Emoji", "Noto Color Emoji", sans-serif;
 }
 div[data-testid="stTabs"] button[aria-selected="true"] {
     color: #ffffff;
@@ -157,14 +181,26 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     color: #f0f0f0;
 }
 div.stButton > button {
-    min-height: 36px;
+    min-height: 38px;
     padding: 4px 2px;
-    font-size: 12px;
+    font-size: 16px;
+    line-height: 1.3;
     border-radius: 9px;
     border: 1px solid #404040;
     background: #1c1c1c;
     color: #ffffff;
     white-space: nowrap;
+    overflow: visible;
+    font-family: "Source Sans Pro", "Segoe UI", "Segoe UI Emoji",
+                 "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+}
+div.stButton > button p {
+    font-size: 16px;
+    line-height: 1.3;
+    margin: 0;
+    overflow: visible;
+    font-family: "Source Sans Pro", "Segoe UI", "Segoe UI Emoji",
+                 "Apple Color Emoji", "Noto Color Emoji", sans-serif;
 }
 div.stButton > button:hover {
     border-color: #bdbdbd;
@@ -370,19 +406,19 @@ def rating_summary(movie_id):
 
 def render_movie_poster(movie, average):
     title = safe_text(display_title(movie["title"]))
-    genres = safe_text(" · ".join(genres_of(movie)) or "Genre unavailable")
+    genres = safe_text(f" {DOT} ".join(genres_of(movie)) or "Genre unavailable")
     year = get_year(movie["title"])
     year_text = str(year) if year else "Movie collection"
 
     if average is not None:
-        rating_text = f"★ {average:.1f} / 5"
+        rating_text = f"{STAR} {average:.1f} / 5"
     else:
         rating_text = "Rating unavailable"
 
     st.markdown(
         f"""
         <div class="movie-poster">
-            <div class="poster-label">CINEAURA · FILM COLLECTION</div>
+            <div class="poster-label">CINEAURA {DOT} FILM COLLECTION</div>
             <div>
                 <div class="poster-title">{title}</div>
                 <div class="poster-bottom" style="margin-top:12px">
@@ -425,7 +461,7 @@ def handle_reaction(movie_id, title, action):
     if not isinstance(st.session_state.get("reactions"), dict):
         st.session_state["reactions"] = {}
 
-    if action == "❤️":
+    if action == HEART:
         if movie_id in current_watchlist:
             current_watchlist = [
                 item for item in current_watchlist
@@ -593,7 +629,10 @@ def render_grid(data, prefix="movies", columns_per_row=5):
                     )
 
                     if average is not None:
-                        rating_label = f"★ {average:.1f}/5 · {vote_count:,} ratings"
+                        rating_label = (
+                            f"{STAR} {average:.1f}/5 {DOT} "
+                            f"{vote_count:,} ratings"
+                        )
                     else:
                         rating_label = "Rating unavailable"
 
@@ -616,52 +655,52 @@ def render_grid(data, prefix="movies", columns_per_row=5):
 
                     with b1:
                         if st.button(
-                            "👍",
+                            THUMBS_UP,
                             key=f"{prefix}_like_{movie_id}",
                             help="Like this movie",
                             use_container_width=True,
                         ):
-                            handle_reaction(movie_id, title, "👍")
+                            handle_reaction(movie_id, title, THUMBS_UP)
 
                     with b2:
                         if st.button(
-                            "👎",
+                            THUMBS_DOWN,
                             key=f"{prefix}_dislike_{movie_id}",
                             help="Dislike this movie",
                             use_container_width=True,
                         ):
-                            handle_reaction(movie_id, title, "👎")
+                            handle_reaction(movie_id, title, THUMBS_DOWN)
 
                     with b3:
                         is_saved = movie_id in st.session_state["watchlist"]
 
                         if st.button(
-                            "💜" if is_saved else "❤️",
+                            PURPLE_HEART if is_saved else HEART,
                             key=f"{prefix}_watch_{movie_id}",
                             help="Remove from Watchlist" if is_saved
                             else "Add to Watchlist",
                             use_container_width=True,
                         ):
-                            handle_reaction(movie_id, title, "❤️")
+                            handle_reaction(movie_id, title, HEART)
 
                     with b4:
                         if st.button(
-                            "🔥",
+                            FIRE,
                             key=f"{prefix}_hype_{movie_id}",
                             help="Hype this movie",
                             use_container_width=True,
                         ):
-                            handle_reaction(movie_id, title, "🔥")
+                            handle_reaction(movie_id, title, FIRE)
 
 
 # =========================================================
 # HEADER
 # =========================================================
 
-st.markdown("""
+st.markdown(f"""
 <div class="hero">
     <div class="eyebrow">YOUR PERSONAL MOVIE UNIVERSE</div>
-    <h1>🎬 CineAura</h1>
+    <h1>{CLAPPER} CineAura</h1>
     <p>Discover stories. Find your vibe. Choose your next favourite.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -697,10 +736,10 @@ st.divider()
 # =========================================================
 
 discover_tab, foryou_tab, genre_tab, watchlist_tab = st.tabs([
-    "🔎 Discover",
-    "✨ For You",
-    "🎭 By Genre",
-    "❤️ Your Watchlist",
+    f"{SEARCH} Discover",
+    f"{SPARKLES} For You",
+    f"{MASKS} By Genre",
+    f"{HEART} Your Watchlist",
 ])
 
 
@@ -781,7 +820,7 @@ with foryou_tab:
 
     # Prefix IDs in labels to avoid duplicate titles mapping to the wrong ID.
     movie_options = {
-        f"{row.title} · {int(row.movieId)}": int(row.movieId)
+        f"{row.title} {DOT} {int(row.movieId)}": int(row.movieId)
         for row in movies[["movieId", "title"]].itertuples(index=False)
     }
 
@@ -882,7 +921,7 @@ with watchlist_tab:
     saved_ids = st.session_state["watchlist"]
 
     if not saved_ids:
-        st.info("Your Watchlist is empty. Press ❤️ on a movie to save it.")
+        st.info(f"Your Watchlist is empty. Press {HEART} on a movie to save it.")
     else:
         saved_movies = movies[
             movies["movieId"].isin(saved_ids)
@@ -899,17 +938,17 @@ with watchlist_tab:
 st.divider()
 
 if st.session_state["last_notice"]:
-    st.caption(f"Recent activity · {st.session_state['last_notice']}")
+    st.caption(f"Recent activity {DOT} {st.session_state['last_notice']}")
 
 st.markdown(
-    """
+    f"""
     <div style="
         text-align:center;
         color:#aaaaaa;
         padding:12px;
         letter-spacing:.4px;
     ">
-        CineAura · Built by Devadharshini Murugan
+        CineAura {DOT} Built by Devadharshini Murugan
     </div>
     """,
     unsafe_allow_html=True,
