@@ -168,8 +168,11 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     margin-top: 10px;
 }
 .movie-meta {
-    height: 38px;
+    height: 58px;
     overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
     font-size: 12px;
     line-height: 1.5;
     color: #b8b8b8;
@@ -800,6 +803,26 @@ with discover_tab:
                 regex=False,
             )
         ]
+
+    # ---- NEW: dropdown box. Click it, pick a movie, its poster shows ----
+    dropdown_data = discover_data.sort_values("title").head(500)
+    dropdown_titles = {
+        int(row.movieId): str(row.title)
+        for row in dropdown_data[["movieId", "title"]].itertuples(index=False)
+    }
+
+    picked_movie_id = st.selectbox(
+        "Select a movie to view its poster",
+        options=list(dropdown_titles.keys()),
+        index=None,
+        format_func=lambda movie_id: dropdown_titles.get(movie_id, str(movie_id)),
+        placeholder="Click here and choose a movie...",
+        key="discover_poster_pick",
+    )
+
+    if picked_movie_id is not None:
+        picked_movie = movies[movies["movieId"] == int(picked_movie_id)]
+        render_grid(picked_movie, prefix="discover_pick")
 
     st.caption(f"{len(discover_data):,} matching movies")
     render_grid(discover_data.head(40), prefix="discover")
