@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import zipfile
 import os
@@ -73,6 +72,7 @@ h1,h2,h3,h4 {font-family:'Outfit',sans-serif!important}
 .score-green {background:#22c55e22;color:#6ef0a0;border:1px solid #22c55e55}
 .score-yellow {background:#facc1522;color:#ffe27a;border:1px solid #facc1555}
 .score-red {background:#f8717122;color:#ff9999;border:1px solid #f8717155}
+
 .stButton > button {
  border-radius:11px;
  border:1px solid rgba(255,255,255,.18);
@@ -82,12 +82,13 @@ h1,h2,h3,h4 {font-family:'Outfit',sans-serif!important}
  min-height:44px;
  white-space:nowrap;
  font-size:14px;
- font-family:"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+ font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif !important;
 }
-.stButton > button p {
+.stButton > button p,
+.stButton > button span {
  color:#ffffff !important;
  font-size:14px;
- font-family:"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+ font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif !important;
 }
 .stButton > button:hover {border-color:var(--pink);background:#26202d;color:#ffffff !important}
 div[data-testid="stSidebar"] {background:rgba(12,16,29,.95)}
@@ -104,6 +105,7 @@ REQUIRED = [
     "cf_neighbor_cache.pkl",
     "movies_features.pkl",
 ]
+
 
 @st.cache_resource
 def load_model_files():
@@ -241,8 +243,9 @@ def fetch_poster(title):
     return None
 
 
-def show_poster(title, year):
+def show_poster(title, year=None):
     url = fetch_poster(title)
+
     if url:
         st.markdown(
             f'<img class="poster" src="{url}" alt="Movie poster">',
@@ -253,11 +256,12 @@ def show_poster(title, year):
             str(title).replace("&", "&amp;")
             .replace("<", "&lt;").replace(">", "&gt;")
         )
+
+        # Removed the year text from the bottom of the poster.
         st.markdown(
             f'<div class="poster-fallback">'
             f'<div style="font-size:2.2rem">🍿</div>'
             f'<div>{safe_title}</div>'
-            f'<div style="opacity:.65;margin-top:.5rem">{year}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -341,10 +345,12 @@ def render_cards(frame, prefix, max_cards=5):
         movie_id = int(movie["movieId"])
         title = str(movie.get("title", "Untitled movie"))
         year = str(movie.get("year", "—"))
+
         genres = [
             g for g in str(movie.get("genres", "")).split("|")
             if g and g != "(no genres listed)"
         ]
+
         avg_rating, count = rating_info(movie_id)
 
         like_key = f"like_{prefix}_{movie_id}"
@@ -353,13 +359,18 @@ def render_cards(frame, prefix, max_cards=5):
         hype_key = f"hype_{prefix}_{movie_id}"
 
         with columns[index % 5]:
-            st.markdown('<div class="movie-card">', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="movie-card">',
+                unsafe_allow_html=True
+            )
+
             show_poster(title, year)
 
             safe_title = (
                 title.replace("&", "&amp;")
                 .replace("<", "&lt;").replace(">", "&gt;")
             )
+
             st.markdown(
                 f'<div class="card-body">'
                 f'<div class="movie-title">{safe_title}</div>'
@@ -391,7 +402,9 @@ def render_cards(frame, prefix, max_cards=5):
                     key=like_key + "_btn",
                     use_container_width=True,
                 ):
-                    st.session_state[like_key] = not st.session_state.get(like_key, False)
+                    st.session_state[like_key] = not st.session_state.get(
+                        like_key, False
+                    )
                     if st.session_state[like_key]:
                         st.session_state[dislike_key] = False
                     st.rerun()
@@ -401,7 +414,9 @@ def render_cards(frame, prefix, max_cards=5):
                     key=watch_key + "_btn",
                     use_container_width=True,
                 ):
-                    st.session_state[watch_key] = not st.session_state.get(watch_key, False)
+                    st.session_state[watch_key] = not st.session_state.get(
+                        watch_key, False
+                    )
                     st.rerun()
 
             with right:
@@ -410,7 +425,9 @@ def render_cards(frame, prefix, max_cards=5):
                     key=dislike_key + "_btn",
                     use_container_width=True,
                 ):
-                    st.session_state[dislike_key] = not st.session_state.get(dislike_key, False)
+                    st.session_state[dislike_key] = not st.session_state.get(
+                        dislike_key, False
+                    )
                     if st.session_state[dislike_key]:
                         st.session_state[like_key] = False
                     st.rerun()
@@ -420,7 +437,9 @@ def render_cards(frame, prefix, max_cards=5):
                     key=hype_key + "_btn",
                     use_container_width=True,
                 ):
-                    st.session_state[hype_key] = not st.session_state.get(hype_key, False)
+                    st.session_state[hype_key] = not st.session_state.get(
+                        hype_key, False
+                    )
                     st.rerun()
 
 
@@ -428,6 +447,7 @@ def render_cards(frame, prefix, max_cards=5):
 with st.sidebar:
     st.markdown("## 🎬 CineAura")
     st.caption("Your next favourite is waiting.")
+
     page = st.radio(
         "Explore",
         ["Discover", "For You", "By Genre", "My Watchlist"]
@@ -437,11 +457,14 @@ with st.sidebar:
     st.markdown("### Your profile")
 
     available_users = sorted(int(uid) for uid in user_to_row.keys())
+
     selected_user = st.selectbox(
         "MovieLens user ID", available_users
     )
 
-    st.caption("Recommendations use your saved collaborative-filtering model.")
+    st.caption(
+        "Recommendations use your saved collaborative-filtering model."
+    )
 
 
 # ---------- HEADER ----------
@@ -463,6 +486,7 @@ ratings_count = (
 )
 
 m1, m2, m3 = st.columns(3)
+
 metrics = [
     (m1, "MOVIES IN CATALOG", f"{len(movies):,}"),
     (
@@ -490,6 +514,7 @@ movie_options = (
     .drop_duplicates("movieId")
     .sort_values("title")
 )
+
 movie_labels = {
     f"{row.title} · {row.year}": int(row.movieId)
     for row in movie_options.itertuples(index=False)
@@ -516,7 +541,9 @@ if selected_label != "Choose a movie...":
     with right:
         st.subheader(selected_movie["title"])
         st.write("Genres:", selected_movie["genres"])
+
         avg, count = rating_info(chosen_id)
+
         if avg is not None:
             st.markdown(
                 f'<span class="score {rating_class(avg)}">'
@@ -525,7 +552,10 @@ if selected_label != "Choose a movie...":
                 unsafe_allow_html=True,
             )
 
-        if st.button("✨ Recommend similar movies", key=f"similar_button_{chosen_id}"):
+        if st.button(
+            "✨ Recommend similar movies",
+            key=f"similar_button_{chosen_id}"
+        ):
             st.session_state["similar_movie_id"] = chosen_id
 
     if st.session_state.get("similar_movie_id") == chosen_id:
@@ -544,7 +574,10 @@ if page == "Discover":
         if genre and genre != "(no genres listed)"
     })
 
-    genre = st.selectbox("Choose a category", genres, key="discover_genre")
+    genre = st.selectbox(
+        "Choose a category", genres, key="discover_genre"
+    )
+
     genre_movies = movies[
         movies["genres"].str.contains(
             genre, case=False, regex=False, na=False
@@ -557,6 +590,7 @@ if page == "Discover":
                 int(movie_id), {}
             ).get("mean", 0)
         )
+
         genre_movies = genre_movies.sort_values(
             ["avg_rating", "title"], ascending=[False, True]
         )
@@ -567,17 +601,21 @@ if page == "Discover":
     st.markdown("## ✨ Curated shelf")
     render_cards(movies.sort_values("title").head(5), "curated", 5)
 
+
 elif page == "For You":
     st.markdown(f"## 💜 Picks for MovieLens user {selected_user}")
+
     st.caption(
         "Model score ranks candidates. It is not a probability or an IMDb rating."
     )
 
     recommendations = recommend_user(selected_user, 10)
+
     render_cards(recommendations, "for_you", 5)
 
     st.markdown("### More recommendations")
     render_cards(recommendations.iloc[5:], "for_you_more", 5)
+
 
 elif page == "By Genre":
     genres = sorted({
@@ -588,6 +626,7 @@ elif page == "By Genre":
     })
 
     genre = st.selectbox("Pick a genre", genres, key="genre_page")
+
     genre_movies = movies[
         movies["genres"].str.contains(
             genre, case=False, regex=False, na=False
@@ -600,11 +639,13 @@ elif page == "By Genre":
                 int(movie_id), {}
             ).get("mean", 0)
         )
+
         genre_movies = genre_movies.sort_values(
             ["avg_rating", "title"], ascending=[False, True]
         )
 
     render_cards(genre_movies, "genre", 5)
+
 
 else:
     saved_ids = []
@@ -628,6 +669,7 @@ else:
         )
     else:
         render_cards(saved_movies, "watchlist", 5)
+
         st.dataframe(
             saved_movies[["title", "year", "genres"]],
             use_container_width=True,
@@ -637,6 +679,7 @@ else:
 
 # ---------- FOOTER ----------
 st.markdown("---")
+
 st.markdown(
     '<div class="small-note">🎬 CineAura · Built by Devadharshini Murugan. '
     'Scores shown are MovieLens community ratings (0–5), not IMDb. '
