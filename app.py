@@ -1,19 +1,22 @@
 
 from pathlib import Path
 import os
-import html
+import re
 import zipfile
 
 import joblib
 import numpy as np
 import pandas as pd
+import requests
 import streamlit as st
 
-# --------------------------------------------------
-# CONFIGURATION
-# --------------------------------------------------
+# ---------------------------------------------------------
+# CINEAURA - MOVIE RECOMMENDATION SYSTEM
+# Uses the saved collaborative-filtering model.
+# ---------------------------------------------------------
+
 st.set_page_config(
-    page_title="CineMatch | Movie Recommender",
+    page_title="CineAura | Discover Your Next Favourite",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -21,7 +24,244 @@ st.set_page_config(
 
 BASE = Path(__file__).resolve().parent
 
-REQUIRED_FILES = [
+# ----------------------- STYLING --------------------------
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --bg: #080b14;
+  --panel: rgba(23, 29, 48, .78);
+  --border: rgba(255,255,255,.12);
+  --muted: #a6aec6;
+  --pink: #ff477e;
+  --violet: #8b5cf6;
+  --cyan: #50d8ed;
+}
+
+.stApp {
+  background:
+    radial-gradient(ellipse at 10% 0%, rgba(139,92,246,.20), transparent 34%),
+    radial-gradient(ellipse at 95% 10%, rgba(255,71,126,.13), transparent 28%),
+    var(--bg);
+  color: #f5f7ff;
+  font-family: 'DM Sans', sans-serif;
+}
+
+h1,h2,h3,h4 {
+  font-family: 'Outfit', sans-serif !important;
+  letter-spacing: -.03em;
+}
+
+[data-testid="stHeader"] { background: rgba(8,11,20,.65); }
+
+.block-container {
+  max-width: 1450px;
+  padding-top: 1.3rem;
+  padding-bottom: 3rem;
+}
+
+section[data-testid="stSidebar"] { display: none; }
+
+.hero {
+  padding: 2.2rem;
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  margin: .5rem 0 1.4rem;
+  background: linear-gradient(115deg,
+    rgba(139,92,246,.25),
+    rgba(255,71,126,.12) 55%,
+    rgba(80,216,237,.09));
+  box-shadow: 0 18px 70px rgba(0,0,0,.24);
+  backdrop-filter: blur(18px);
+  text-align: center;
+}
+
+.brand {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1rem;
+  color: #ff9abb;
+  font-weight: 800;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.hero-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  font-weight: 800;
+  line-height: 1.08;
+  margin: .7rem 0;
+}
+
+.hero-sub {
+  color: #c2c8dc;
+  max-width: 720px;
+  margin: auto;
+}
+
+.section-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.55rem;
+  font-weight: 800;
+  margin: 1.4rem 0 .3rem;
+}
+
+.section-subtitle {
+  color: var(--muted);
+  margin-bottom: 1rem;
+  font-size: .9rem;
+}
+
+.metric {
+  background: rgba(255,255,255,.045);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+.metric-value {
+  font: 800 1.35rem 'Outfit', sans-serif;
+  margin-top: .3rem;
+}
+
+.movie-card {
+  background: linear-gradient(160deg,
+    rgba(255,255,255,.075),
+    rgba(255,255,255,.025));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  transition: transform .22s, border-color .22s, box-shadow .22s;
+  backdrop-filter: blur(16px);
+  margin-bottom: .6rem;
+}
+
+.movie-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255,71,126,.65);
+  box-shadow: 0 18px 35px rgba(0,0,0,.28);
+}
+
+.poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  display: block;
+  background: #171d30;
+}
+
+.poster-fallback {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem;
+  box-sizing: border-box;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(139,92,246,.55), transparent 40%),
+    linear-gradient(145deg,#171d30,#29152b);
+  color: #f7f3ff;
+  font: 700 1rem 'Outfit', sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.card-body { padding: .8rem; }
+
+.movie-title {
+  font: 700 .98rem 'Outfit', sans-serif;
+  line-height: 1.3;
+  min-height: 2.4rem;
+}
+
+.movie-meta {
+  color: var(--muted);
+  font-size: .78rem;
+  margin: .4rem 0 .65rem;
+}
+
+.score {
+  display: inline-block;
+  font-weight: 800;
+  padding: .3rem .5rem;
+  border-radius: 9px;
+  font-size: .76rem;
+  margin-bottom: .5rem;
+}
+
+.score-green {
+  background: rgba(34,197,94,.15);
+  color: #6ef0a0;
+  border: 1px solid rgba(34,197,94,.35);
+}
+
+.score-yellow {
+  background: rgba(250,204,21,.14);
+  color: #ffe27a;
+  border: 1px solid rgba(250,204,21,.3);
+}
+
+.score-red {
+  background: rgba(248,113,113,.14);
+  color: #ff9999;
+  border: 1px solid rgba(248,113,113,.3);
+}
+
+.stButton > button {
+  border-radius: 11px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  font-weight: 600;
+  transition: all .18s;
+  width: 100%;
+}
+
+.stButton > button:hover {
+  border-color: var(--pink);
+  background: rgba(255,71,126,.16);
+  color: white;
+}
+
+div[data-baseweb="tab-list"] {
+  justify-content: center;
+  gap: .45rem;
+}
+
+button[data-baseweb="tab"] {
+  border-radius: 12px;
+  padding: .65rem 1rem;
+}
+
+div[data-testid="stNotificationContentInfo"] {
+  border-radius: 14px;
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+  margin-top: 3rem;
+  padding: 1.5rem .5rem;
+  color: var(--muted);
+  text-align: center;
+  font-size: .85rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ----------------------- MODEL FILES ---------------------
+
+REQUIRED = [
     "user_movie_matrix.pkl",
     "user_to_row.pkl",
     "movie_ids_cf.pkl",
@@ -29,314 +269,66 @@ REQUIRED_FILES = [
     "movies_features.pkl",
 ]
 
-# --------------------------------------------------
-# CINEMATIC DESIGN
-# --------------------------------------------------
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
-:root {
-    --bg: #080b14;
-    --panel: rgba(255,255,255,.055);
-    --border: rgba(255,255,255,.13);
-    --muted: #a6aec6;
-    --pink: #ff477e;
-    --violet: #8b5cf6;
-}
-
-.stApp {
-    background:
-        radial-gradient(ellipse at 10% 0%, rgba(139,92,246,.22), transparent 35%),
-        radial-gradient(ellipse at 95% 10%, rgba(255,71,126,.15), transparent 30%),
-        var(--bg);
-    color: #f5f7ff;
-    font-family: 'DM Sans', sans-serif;
-}
-
-h1, h2, h3, h4, p, label {
-    font-family: 'DM Sans', sans-serif;
-}
-
-.block-container {
-    max-width: 1400px;
-    padding-top: 1.3rem;
-    padding-bottom: 3rem;
-}
-
-[data-testid="stHeader"] {
-    background: rgba(8,11,20,.75);
-}
-
-[data-testid="stSidebar"] {
-    display: none;
-}
-
-.hero {
-    padding: 2.2rem;
-    border: 1px solid var(--border);
-    border-radius: 26px;
-    margin: .5rem 0 1.5rem;
-    background: linear-gradient(
-        115deg,
-        rgba(139,92,246,.24),
-        rgba(255,71,126,.12),
-        rgba(80,216,237,.08)
-    );
-    box-shadow: 0 18px 70px rgba(0,0,0,.25);
-    backdrop-filter: blur(18px);
-    text-align: center;
-}
-
-.eyebrow {
-    color: #ff8eaf;
-    font-weight: 700;
-    letter-spacing: .16em;
-    font-size: .76rem;
-}
-
-.hero-title {
-    font-size: clamp(2rem, 4vw, 3.5rem);
-    font-weight: 800;
-    line-height: 1.12;
-    margin: .65rem 0;
-}
-
-.hero-sub {
-    color: #c2c8dc;
-    max-width: 750px;
-    margin: auto;
-}
-
-.metric {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 17px;
-    padding: 1rem;
-    min-height: 80px;
-    text-align: center;
-}
-
-.metric-label {
-    color: var(--muted);
-    font-size: .75rem;
-    letter-spacing: .08em;
-}
-
-.metric-value {
-    font-size: 1.15rem;
-    font-weight: 800;
-    margin-top: .35rem;
-}
-
-.movie-card {
-    background: linear-gradient(
-        160deg,
-        rgba(255,255,255,.075),
-        rgba(255,255,255,.025)
-    );
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    overflow: hidden;
-    transition: transform .22s, border-color .22s, box-shadow .22s;
-    margin-bottom: .6rem;
-}
-
-.movie-card:hover {
-    transform: translateY(-4px);
-    border-color: var(--pink);
-    box-shadow: 0 18px 35px rgba(0,0,0,.28);
-}
-
-.poster {
-    width: 100%;
-    aspect-ratio: 2 / 3;
-    object-fit: cover;
-    border-radius: 12px;
-}
-
-.poster-fallback {
-    aspect-ratio: 2 / 3;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    overflow-wrap: anywhere;
-    padding: 1rem;
-    border-radius: 12px;
-    background:
-        radial-gradient(circle at 25% 20%, rgba(139,92,246,.5), transparent 42%),
-        linear-gradient(145deg, #171d30, #29152b);
-    border: 1px solid var(--border);
-}
-
-.movie-title {
-    font-size: .98rem;
-    font-weight: 700;
-    line-height: 1.35;
-    min-height: 2.6rem;
-    margin-top: .7rem;
-}
-
-.movie-meta {
-    color: var(--muted);
-    font-size: .78rem;
-    margin: .35rem 0 .65rem;
-}
-
-.score {
-    display: inline-block;
-    font-weight: 800;
-    padding: .3rem .5rem;
-    border-radius: 9px;
-    font-size: .76rem;
-}
-
-.score-green {
-    background: rgba(34,197,94,.15);
-    color: #6ef0a0;
-    border: 1px solid rgba(34,197,94,.35);
-}
-
-.score-yellow {
-    background: rgba(250,204,21,.14);
-    color: #ffe27a;
-    border: 1px solid rgba(250,204,21,.3);
-}
-
-.score-red {
-    background: rgba(248,113,113,.14);
-    color: #ff9999;
-    border: 1px solid rgba(248,113,113,.3);
-}
-
-.stButton > button {
-    width: 100%;
-    border-radius: 11px;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,.06);
-    color: #fff;
-    font-weight: 600;
-    transition: all .18s;
-}
-
-.stButton > button:hover {
-    border-color: var(--pink);
-    background: rgba(255,71,126,.16);
-    color: white;
-}
-
-.stTextInput input,
-.stSelectbox div[data-baseweb="select"] > div {
-    border-radius: 12px;
-}
-
-.small-note {
-    color: var(--muted);
-    font-size: .78rem;
-}
-
-hr {
-    border-color: var(--border);
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-
-# --------------------------------------------------
-# LOAD SAVED MODEL
-# --------------------------------------------------
 @st.cache_resource
 def load_model_files():
-    missing = [
-        name for name in REQUIRED_FILES
-        if not (BASE / name).is_file()
-    ]
-
+    missing = [name for name in REQUIRED if not (BASE / name).is_file()]
     if missing:
         raise FileNotFoundError(
-            "Missing model files: " + ", ".join(missing)
+            "Missing files beside app.py: " + ", ".join(missing)
         )
 
     matrix = joblib.load(BASE / "user_movie_matrix.pkl")
     user_map = joblib.load(BASE / "user_to_row.pkl")
-    movie_ids = np.asarray(
-        joblib.load(BASE / "movie_ids_cf.pkl")
-    )
-    neighbor_cache = joblib.load(
-        BASE / "cf_neighbor_cache.pkl"
-    )
-    features = pd.read_pickle(
-        BASE / "movies_features.pkl"
-    )
+    movie_ids = np.asarray(joblib.load(BASE / "movie_ids_cf.pkl"))
+    neighbor_cache = joblib.load(BASE / "cf_neighbor_cache.pkl")
+
+    # Saved with pandas.to_pickle in the notebook.
+    features = pd.read_pickle(BASE / "movies_features.pkl")
 
     return matrix, user_map, movie_ids, neighbor_cache, features
 
 
 try:
-    (
-        user_movie_matrix,
-        user_to_row,
-        movie_ids_cf,
-        neighbor_cache,
-        movies,
-    ) = load_model_files()
-
-except Exception as error:
-    st.error("The saved recommendation model could not be loaded.")
-    st.code(str(error))
+    user_movie_matrix, user_to_row, movie_ids_cf, neighbor_cache, movies = (
+        load_model_files()
+    )
+except Exception as exc:
+    st.error("CineAura could not load the saved recommendation model.")
+    st.code(str(exc))
     st.info(
-        "Keep all five required model files in the same GitHub "
-        "folder as app.py. Check each filename carefully."
+        "Check that all five required .pkl files are in the same GitHub "
+        "folder as app.py, and that the filenames match exactly."
     )
     st.stop()
 
 
-# --------------------------------------------------
-# CLEAN MOVIE DATA
-# --------------------------------------------------
+# ----------------------- MOVIE DATA ----------------------
+
 movies = movies.copy()
 
-if not {"movieId", "title"}.issubset(movies.columns):
-    st.error("movies_features.pkl needs movieId and title columns.")
+if "movieId" not in movies.columns or "title" not in movies.columns:
+    st.error("movies_features.pkl must contain movieId and title columns.")
     st.stop()
 
 if "genres" not in movies.columns:
     movies["genres"] = "Genre not listed"
 
-movies["movieId"] = pd.to_numeric(
-    movies["movieId"], errors="coerce"
-)
+movies["title"] = movies["title"].fillna("Untitled movie").astype(str)
+movies["genres"] = movies["genres"].fillna("Genre not listed").astype(str)
+movies["movieId"] = pd.to_numeric(movies["movieId"], errors="coerce")
 movies = movies.dropna(subset=["movieId"]).copy()
 movies["movieId"] = movies["movieId"].astype(int)
 movies = movies.drop_duplicates("movieId")
+movies["year"] = movies["title"].str.extract(r"\((\d{4})\)\s*$")[0].fillna("—")
 
-movies["title"] = (
-    movies["title"].fillna("Untitled movie").astype(str)
-)
-movies["genres"] = (
-    movies["genres"].fillna("Genre not listed").astype(str)
-)
-movies["year"] = (
-    movies["title"].str.extract(r"\((\d{4})\)\s*$")[0]
-    .fillna("Year unavailable")
-)
+# Language is not part of the standard MovieLens movies.csv.
+if "language" not in movies.columns:
+    movies["language"] = "Unknown"
 
-# Only use a language filter if real language metadata exists.
-LANGUAGE_COLUMN = next(
-    (
-        col for col in ["language", "original_language", "lang"]
-        if col in movies.columns
-    ),
-    None,
-)
+movies["language"] = movies["language"].fillna("Unknown").astype(str)
 
-
-# --------------------------------------------------
-# LOAD MOVIELENS RATINGS
-# --------------------------------------------------
+# Include saved MovieLens rating summaries when the dataset is available.
 @st.cache_data
 def read_rating_summary():
     csv_path = BASE / "ratings.csv"
@@ -345,21 +337,15 @@ def read_rating_summary():
     try:
         if csv_path.exists():
             ratings = pd.read_csv(csv_path)
-
         elif zip_path.exists():
-            with zipfile.ZipFile(zip_path) as archive:
+            with zipfile.ZipFile(zip_path) as z:
                 member = next(
-                    (
-                        name for name in archive.namelist()
-                        if name.endswith("ratings.csv")
-                    ),
+                    (x for x in z.namelist() if x.endswith("ratings.csv")),
                     None,
                 )
-
-                if member is None:
+                if not member:
                     return {}
-
-                with archive.open(member) as file:
+                with z.open(member) as file:
                     ratings = pd.read_csv(file)
         else:
             return {}
@@ -370,106 +356,137 @@ def read_rating_summary():
         return ratings.groupby("movieId")["rating"].agg(
             ["mean", "count"]
         ).to_dict("index")
-
     except Exception:
         return {}
 
 
 rating_summary = read_rating_summary()
+movies["community_rating"] = movies["movieId"].map(
+    lambda mid: rating_summary.get(int(mid), {}).get("mean", np.nan)
+)
+movies["rating_count"] = movies["movieId"].map(
+    lambda mid: rating_summary.get(int(mid), {}).get("count", 0)
+)
+
+movie_by_id = movies.set_index("movieId", drop=False)
 
 
-def rating_info(movie_id):
-    info = rating_summary.get(int(movie_id))
+# ----------------------- POSTERS -------------------------
 
-    if not info:
-        return None, 0
-
-    return float(info["mean"]), int(info["count"])
-
-
-def rating_class(score):
-    if score is None:
-        return "score-yellow"
-
-    if score >= 4.0:
-        return "score-green"
-
-    if score >= 2.5:
-        return "score-yellow"
-
-    return "score-red"
+# Optional secret in Streamlit Cloud:
+# App settings -> Secrets:
+# TMDB_API_KEY = "your_api_key"
+try:
+    TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", "")
+except Exception:
+    TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 
 
-# --------------------------------------------------
-# MOVIE POSTERS
-# Optional: set TMDB_API_KEY in Streamlit Secrets.
-# --------------------------------------------------
-@st.cache_data(show_spinner=False, ttl=86400)
-def fetch_poster(title):
-    api_key = st.secrets.get(
-        "TMDB_API_KEY",
-        os.getenv("TMDB_API_KEY", ""),
-    )
-
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_poster(title, year, api_key):
     if not api_key:
         return None
 
+    clean_title = re.sub(r"\s*\(\d{4}\)\s*$", "", str(title)).strip()
+
     try:
-        import requests
-
-        clean_title = title.rsplit(" (", 1)[0]
-
         response = requests.get(
             "https://api.themoviedb.org/3/search/movie",
             params={
                 "api_key": api_key,
                 "query": clean_title,
+                "year": str(year) if str(year).isdigit() else "",
             },
-            timeout=5,
+            timeout=8,
         )
+        response.raise_for_status()
+        results = response.json().get("results", [])
 
-        if response.ok:
-            results = response.json().get("results", [])
+        if not results:
+            return None
 
-            if results and results[0].get("poster_path"):
-                return (
-                    "https://image.tmdb.org/t/p/w500"
-                    + results[0]["poster_path"]
-                )
+        path = results[0].get("poster_path")
+        if path:
+            return "https://image.tmdb.org/t/p/w342" + path
 
     except Exception:
-        pass
+        return None
 
     return None
 
 
 def show_poster(title, year):
-    poster_url = fetch_poster(title)
-
-    if poster_url:
-        st.image(poster_url, use_container_width=True)
-    else:
-        safe_title = html.escape(str(title))
-
+    url = get_poster(str(title), str(year), TMDB_API_KEY)
+    if url:
         st.markdown(
-            f"""
-            <div class="poster-fallback">
-                <div style="font-size:1.05rem;font-weight:800">
-                    {safe_title}
-                </div>
-                <div style="color:#c2c8dc;margin-top:.7rem">
-                    {html.escape(str(year))}
-                </div>
-            </div>
-            """,
+            f'<img class="poster" src="{url}" alt="Movie poster">',
+            unsafe_allow_html=True,
+        )
+    else:
+        # No fake poster or repeated popcorn emoji.
+        st.markdown(
+            '<div class="poster-fallback">'
+            '<span style="font-size:2rem">🎬</span>'
+            '<span>Poster unavailable</span>'
+            '</div>',
             unsafe_allow_html=True,
         )
 
 
-# --------------------------------------------------
-# RECOMMENDATION FUNCTIONS
-# --------------------------------------------------
-def recommend_user(user_id, top_n=10):
+# ----------------------- SESSION STATE -------------------
+
+if "reactions" not in st.session_state:
+    st.session_state.reactions = {}
+
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = set()
+
+if "notifications" not in st.session_state:
+    st.session_state.notifications = [
+        "Welcome to CineAura — discover a new favourite today."
+    ]
+
+if "last_added" not in st.session_state:
+    st.session_state.last_added = None
+
+
+def react(movie_id, action):
+    movie_id = int(movie_id)
+    title = movie_by_id.loc[movie_id, "title"]
+
+    if action == "❤️ Watchlist":
+        if movie_id in st.session_state.watchlist:
+            st.session_state.watchlist.remove(movie_id)
+            st.session_state.notifications.insert(
+                0, f"Removed from Watchlist: {title}"
+            )
+        else:
+            st.session_state.watchlist.add(movie_id)
+            st.session_state.notifications.insert(
+                0, f"Added to Watchlist: {title}"
+            )
+            st.session_state.last_added = title
+
+    else:
+        current = st.session_state.reactions.get(movie_id)
+        if current == action:
+            st.session_state.reactions.pop(movie_id, None)
+            st.session_state.notifications.insert(
+                0, f"Reaction cleared: {title}"
+            )
+        else:
+            st.session_state.reactions[movie_id] = action
+            st.session_state.notifications.insert(
+                0, f"{action} — {title}"
+            )
+
+    st.session_state.notifications = st.session_state.notifications[:8]
+
+
+# ----------------------- RECOMMENDER ---------------------
+
+def recommend_for_user(user_id, top_n=20):
+    """Rank unseen movies using the saved item-neighbour cache."""
     if user_id not in user_to_row:
         return pd.DataFrame()
 
@@ -477,495 +494,454 @@ def recommend_user(user_id, top_n=10):
     scores = np.zeros(len(movie_ids_cf), dtype=float)
 
     for col, rating in zip(row.indices, row.data):
-        if rating < 4.0:
+        if float(rating) < 4.0:
             continue
 
-        for neighbor_col, similarity in neighbor_cache.get(
-            int(col), []
-        ):
+        neighbors = neighbor_cache.get(int(col), [])
+
+        for neighbor_col, similarity in neighbors:
             neighbor_col = int(neighbor_col)
+            similarity = float(similarity)
 
-            if (
-                0 <= neighbor_col < len(scores)
-                and float(similarity) > 0
-            ):
-                scores[neighbor_col] += (
-                    float(rating) - 3.0
-                ) * float(similarity)
+            if 0 <= neighbor_col < len(scores) and similarity > 0:
+                scores[neighbor_col] += (float(rating) - 3.0) * similarity
 
-    seen = set(map(int, row.indices))
-
-    candidates = [
-        col for col in range(len(movie_ids_cf))
-        if col not in seen
-    ]
-
+    seen = set(int(x) for x in row.indices)
     ranked = sorted(
-        candidates,
-        key=lambda col: scores[col],
+        [
+            (int(movie_ids_cf[col]), float(scores[col]))
+            for col in range(len(movie_ids_cf))
+            if col not in seen and scores[col] > 0
+        ],
+        key=lambda item: item[1],
         reverse=True,
     )[:top_n]
 
-    results = pd.DataFrame({
-        "movieId": [int(movie_ids_cf[col]) for col in ranked],
-        "Model score": [float(scores[col]) for col in ranked],
-    })
-
-    return results.merge(movies, on="movieId", how="left")
-
-
-def recommend_similar(movie_id, top_n=10):
-    positions = np.where(movie_ids_cf == int(movie_id))[0]
-
-    if len(positions) == 0:
+    if not ranked:
         return pd.DataFrame()
 
-    col = int(positions[0])
-
-    neighbors = sorted(
-        neighbor_cache.get(col, []),
-        key=lambda item: float(item[1]),
-        reverse=True,
-    )[:top_n]
-
-    results = pd.DataFrame({
-        "movieId": [
-            int(movie_ids_cf[int(index)])
-            for index, similarity in neighbors
-        ],
-        "Similarity": [
-            float(similarity)
-            for index, similarity in neighbors
-        ],
-    })
-
-    return results.merge(movies, on="movieId", how="left")
+    result = pd.DataFrame(ranked, columns=["movieId", "cf_score"])
+    return result.merge(
+        movies,
+        on="movieId",
+        how="left",
+    ).drop_duplicates("movieId")
 
 
-# --------------------------------------------------
-# REACTIONS: LIKE, DISLIKE, WATCHLIST, HYPE
-# --------------------------------------------------
-def reaction_key(reaction, movie_id):
-    return f"reaction_{reaction}_{int(movie_id)}"
+def get_user_rated_movies(user_id, minimum_rating=4.0):
+    if user_id not in user_to_row:
+        return []
+
+    row = user_movie_matrix.getrow(user_to_row[user_id])
+    result = []
+
+    for col, rating in zip(row.indices, row.data):
+        if float(rating) >= minimum_rating:
+            movie_id = int(movie_ids_cf[col])
+            if movie_id in movie_by_id.index:
+                result.append(movie_id)
+
+    return result
 
 
-def toggle_reaction(reaction, movie_id):
-    key = reaction_key(reaction, movie_id)
-    new_value = not st.session_state.get(key, False)
+# ----------------------- BRAND / HERO --------------------
 
-    st.session_state[key] = new_value
+st.markdown("""
+<div class="hero">
+  <div class="brand">CINEAURA · YOUR PERSONAL CINEMA</div>
+  <div class="hero-title">Find your next <span style="color:#ff719b">favourite.</span></div>
+  <div class="hero-sub">
+    Discover movies matched to your taste, explore genres, and save
+    the stories you want to watch next.
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-    # Like and dislike are mutually exclusive.
-    if reaction == "like" and new_value:
-        st.session_state[reaction_key("dislike", movie_id)] = False
+# No sidebar: user selection and navigation stay centered.
+available_users = sorted(int(uid) for uid in user_to_row.keys())
 
-    if reaction == "dislike" and new_value:
-        st.session_state[reaction_key("like", movie_id)] = False
+if not available_users:
+    st.error("No users were found in the saved model.")
+    st.stop()
+
+top_center = st.columns([1, 2, 1])[1]
+with top_center:
+    user_id = st.selectbox(
+        "Choose your MovieLens profile",
+        available_users,
+        index=0,
+        help="This selects a profile from the saved MovieLens model.",
+    )
+
+metric_cols = st.columns(4)
+metric_data = [
+    ("MOVIES IN CATALOG", f"{len(movies):,}"),
+    ("RATINGS AVAILABLE", f"{sum(v.get('count', 0) for v in rating_summary.values()):,}" if rating_summary else "Dataset"),
+    ("IN YOUR WATCHLIST", str(len(st.session_state.watchlist))),
+    ("YOUR REACTIONS", str(len(st.session_state.reactions))),
+]
+
+for col, (label, value) in zip(metric_cols, metric_data):
+    with col:
+        st.markdown(
+            f'<div class="metric"><div class="metric-label">{label}</div>'
+            f'<div class="metric-value">{value}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+st.write("")
+
+tabs = st.tabs([
+    "✨ Discover",
+    "🎯 For You",
+    "🎭 By Genre",
+    "❤️ Your Watchlist",
+    "🔔 Notifications",
+])
 
 
-# --------------------------------------------------
-# MOVIE CARDS
-# --------------------------------------------------
-def render_cards(frame, prefix, max_cards=5):
+# ----------------------- SHARED FILTERS -------------------
+
+def get_filtered_catalog(frame, genre="All genres", language="All languages"):
+    result = frame.copy()
+
+    if genre != "All genres":
+        result = result[
+            result["genres"].fillna("").str.contains(
+                re.escape(genre), case=False, regex=True
+            )
+        ]
+
+    if language != "All languages" and "language" in result.columns:
+        result = result[
+            result["language"].fillna("Unknown").str.casefold()
+            == language.casefold()
+        ]
+
+    return result
+
+
+def render_movie_grid(frame, key_prefix, max_movies=20):
     if frame is None or frame.empty:
-        st.info("No movies found for this selection.")
+        st.info("No movies found for this selection. Try another filter.")
         return
 
-    frame = frame.dropna(subset=["movieId"]).head(max_cards)
-    columns = st.columns(5)
+    frame = frame.head(max_movies).copy()
+    card_cols = st.columns(5)
 
     for index, (_, movie) in enumerate(frame.iterrows()):
         movie_id = int(movie["movieId"])
         title = str(movie.get("title", "Untitled movie"))
-        year = str(movie.get("year", "Year unavailable"))
+        year = str(movie.get("year", "—"))
+        genres = str(movie.get("genres", "Genre not listed"))
 
-        genres = [
-            genre
-            for genre in str(movie.get("genres", "")).split("|")
-            if genre and genre != "(no genres listed)"
-        ]
+        rating = movie.get("community_rating", np.nan)
+        try:
+            rating = float(rating)
+        except (TypeError, ValueError):
+            rating = np.nan
 
-        avg_rating, rating_count = rating_info(movie_id)
-
-        with columns[index % 5]:
+        with card_cols[index % 5]:
             st.markdown('<div class="movie-card">', unsafe_allow_html=True)
-
             show_poster(title, year)
 
+            st.markdown('<div class="card-body">', unsafe_allow_html=True)
             st.markdown(
-                f"""
-                <div class="movie-title">{html.escape(title)}</div>
-                <div class="movie-meta">
-                    {html.escape(year)} ·
-                    {html.escape(", ".join(genres[:2]) or "Genre unavailable")}
-                </div>
-                """,
+                f'<div class="movie-title">{title}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div class="movie-meta">{year} · {genres}</div>',
                 unsafe_allow_html=True,
             )
 
-            if avg_rating is not None:
+            if np.isfinite(rating):
+                if rating >= 8:
+                    score_class = "score-green"
+                elif rating >= 5:
+                    score_class = "score-yellow"
+                else:
+                    score_class = "score-red"
+
                 st.markdown(
-                    f"""
-                    <span class="score {rating_class(avg_rating)}">
-                        ★ {avg_rating:.1f}/5 MovieLens
-                    </span>
-                    <div class="small-note">
-                        {rating_count:,} ratings
-                    </div>
-                    """,
+                    f'<span class="score {score_class}">'
+                    f'★ {rating:.1f}/5 · MovieLens</span>',
                     unsafe_allow_html=True,
                 )
             else:
-                st.markdown(
-                    '<div class="small-note">MovieLens rating unavailable</div>',
-                    unsafe_allow_html=True,
-                )
+                st.caption("Community rating unavailable")
 
-            st.markdown("</div>", unsafe_allow_html=True)
+            current_reaction = st.session_state.reactions.get(movie_id)
+            if current_reaction:
+                st.caption(f"Your reaction: {current_reaction}")
 
-            like_key = reaction_key("like", movie_id)
-            dislike_key = reaction_key("dislike", movie_id)
-            watch_key = reaction_key("watch", movie_id)
-            hype_key = reaction_key("hype", movie_id)
+            is_saved = movie_id in st.session_state.watchlist
+            watch_label = "💗 Saved" if is_saved else "❤️ Watchlist"
 
-            left, right = st.columns(2)
+            # One compact reaction box with four working actions.
+            with st.expander("React to this movie", expanded=False):
+                reaction_cols = st.columns(2)
 
-            with left:
-                st.button(
-                    "👍 Liked" if st.session_state.get(like_key, False)
-                    else "👍 Like",
-                    key=f"{prefix}_like_{movie_id}",
-                    use_container_width=True,
-                    on_click=toggle_reaction,
-                    args=("like", movie_id),
-                )
+                with reaction_cols[0]:
+                    if st.button(
+                        "👍 Like",
+                        key=f"{key_prefix}_like_{movie_id}",
+                        use_container_width=True,
+                    ):
+                        react(movie_id, "👍 Like")
+                        st.rerun()
 
-                st.button(
-                    "❤️ Saved" if st.session_state.get(watch_key, False)
-                    else "❤️ Watchlist",
-                    key=f"{prefix}_watch_{movie_id}",
-                    use_container_width=True,
-                    on_click=toggle_reaction,
-                    args=("watch", movie_id),
-                )
+                    if st.button(
+                        "❤️ Watchlist",
+                        key=f"{key_prefix}_watch_{movie_id}",
+                        use_container_width=True,
+                    ):
+                        react(movie_id, "❤️ Watchlist")
+                        st.rerun()
 
-            with right:
-                st.button(
-                    "👎 Disliked" if st.session_state.get(dislike_key, False)
-                    else "👎 Dislike",
-                    key=f"{prefix}_dislike_{movie_id}",
-                    use_container_width=True,
-                    on_click=toggle_reaction,
-                    args=("dislike", movie_id),
-                )
+                with reaction_cols[1]:
+                    if st.button(
+                        "👎 Dislike",
+                        key=f"{key_prefix}_dislike_{movie_id}",
+                        use_container_width=True,
+                    ):
+                        react(movie_id, "👎 Dislike")
+                        st.rerun()
 
-                st.button(
-                    "🔥 Hyped!" if st.session_state.get(hype_key, False)
-                    else "🔥 Hype",
-                    key=f"{prefix}_hype_{movie_id}",
-                    use_container_width=True,
-                    on_click=toggle_reaction,
-                    args=("hype", movie_id),
-                )
+                    if st.button(
+                        "🔥 Hype",
+                        key=f"{key_prefix}_hype_{movie_id}",
+                        use_container_width=True,
+                    ):
+                        react(movie_id, "🔥 Hype")
+                        st.rerun()
 
+                if is_saved:
+                    st.caption("This movie is already in your Watchlist.")
 
-# --------------------------------------------------
-# CENTERED HEADER
-# --------------------------------------------------
-st.markdown("""
-<div class="hero">
-    <div class="eyebrow">YOUR PERSONAL CINEMA</div>
-    <div class="hero-title">
-        Find your next
-        <span style="color:#ff6f9a"> obsession.</span>
-    </div>
-    <div class="hero-sub">
-        Discover your next favourite movie with recommendations
-        powered by your saved MovieLens collaborative-filtering model.
-    </div>
-</div>
-""", unsafe_allow_html=True)
+            st.markdown("</div></div>", unsafe_allow_html=True)
 
 
-# --------------------------------------------------
-# CENTERED PROFILE + NAVIGATION
-# --------------------------------------------------
-profile_col, nav_col = st.columns([1, 2])
+# ----------------------- DISCOVER TAB --------------------
 
-with profile_col:
-    available_users = sorted(int(uid) for uid in user_to_row.keys())
-
-    selected_user = st.selectbox(
-        "Choose MovieLens user",
-        available_users,
-        help=(
-            "This ID selects a user from the training ratings "
-            "used by your saved recommendation model."
-        ),
+with tabs[0]:
+    st.markdown('<div class="section-title">The movie lounge</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-subtitle">Explore the catalog and find something worth watching.</div>',
+        unsafe_allow_html=True,
     )
 
-with nav_col:
-    page = st.radio(
-        "Explore CineMatch",
-        ["Discover", "For You", "By Genre", "My Watchlist"],
-        horizontal=True,
-        label_visibility="visible",
+    search_query = st.text_input(
+        "Search movies",
+        placeholder="Type a title, e.g. Toy Story, Matrix, Titanic...",
+        key="discover_search",
     )
 
-
-# --------------------------------------------------
-# SUMMARY METRICS
-# --------------------------------------------------
-total_ratings = (
-    sum(value["count"] for value in rating_summary.values())
-    if rating_summary else None
-)
-
-m1, m2, m3 = st.columns(3)
-
-for column, label, value in [
-    (m1, "MOVIES", f"{len(movies):,}"),
-    (
-        m2,
-        "MOVIELENS RATINGS",
-        f"{total_ratings:,}" if total_ratings is not None else "Not loaded",
-    ),
-    (m3, "RECOMMENDATION ENGINE", "Collaborative filtering"),
-]:
-    with column:
-        st.markdown(
-            f"""
-            <div class="metric">
-                <div class="metric-label">{label}</div>
-                <div class="metric-value">{value}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-# --------------------------------------------------
-# MOVIE SEARCH
-# --------------------------------------------------
-st.markdown("## 🔎 Find a movie")
-
-search_text = st.text_input(
-    "Search by movie title",
-    placeholder="Type a title — e.g. Toy Story, Matrix, Inception",
-)
-
-if search_text.strip():
-    matched = movies[
-        movies["title"].str.contains(
-            search_text.strip(),
-            case=False,
-            regex=False,
-            na=False,
-        )
-    ].head(30)
-
-    if matched.empty:
-        st.info("No matching movies. Try another title.")
-    else:
-        options = {
-            f"{row['title']} · {row['year']}": int(row["movieId"])
-            for _, row in matched.iterrows()
-        }
-
-        selected_label = st.selectbox(
-            "Choose a matching movie",
-            list(options.keys()),
-            key="search_movie_choice",
-        )
-
-        chosen_id = options[selected_label]
-        selected_movie = movies[
-            movies["movieId"] == chosen_id
-        ].iloc[0]
-
-        poster_col, details_col = st.columns([1, 3])
-
-        with poster_col:
-            show_poster(
-                selected_movie["title"],
-                selected_movie["year"],
-            )
-
-        with details_col:
-            st.subheader(selected_movie["title"])
-            st.write("Year:", selected_movie["year"])
-            st.write("Genres:", selected_movie["genres"])
-
-            avg, count = rating_info(chosen_id)
-
-            if avg is not None:
-                st.markdown(
-                    f"""
-                    <span class="score {rating_class(avg)}">
-                        ★ {avg:.1f}/5 MovieLens
-                    </span>
-                    <span class="small-note"> · {count:,} ratings</span>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            st.button(
-                "✨ Recommend similar movies",
-                key=f"similar_button_{chosen_id}",
-                on_click=lambda mid=chosen_id:
-                    st.session_state.update({"similar_movie_id": mid}),
-            )
-
-        if st.session_state.get("similar_movie_id") == chosen_id:
-            st.markdown("### 🎯 More movies like this")
-            render_cards(
-                recommend_similar(chosen_id, 10),
-                "similar",
-                5,
-            )
-
-
-# --------------------------------------------------
-# DISCOVER PAGE
-# --------------------------------------------------
-st.markdown("---")
-
-if page == "Discover":
-    genres = sorted({
-        genre
-        for value in movies["genres"]
-        for genre in str(value).split("|")
-        if genre and genre != "(no genres listed)"
+    genre_values = sorted({
+        genre.strip()
+        for genres in movies["genres"].dropna()
+        for genre in str(genres).split("|")
+        if genre.strip() and genre.strip() != "(no genres listed)"
     })
 
-    selected_genre = st.selectbox(
-        "Choose a movie category",
-        ["All genres"] + genres,
-        key="discover_genre",
+    language_values = sorted(
+        set(movies["language"].fillna("Unknown").astype(str).tolist())
+    )
+    language_options = ["All languages"] + [
+        value for value in language_values if value != "Unknown"
+    ]
+
+    filter_cols = st.columns(2)
+    with filter_cols[0]:
+        discover_genre = st.selectbox(
+            "Choose a genre",
+            ["All genres"] + genre_values,
+            key="discover_genre",
+        )
+    with filter_cols[1]:
+        discover_language = st.selectbox(
+            "Choose a language",
+            language_options,
+            key="discover_language",
+        )
+
+    catalog = get_filtered_catalog(
+        movies, discover_genre, discover_language
     )
 
-    filtered = movies.copy()
-
-    if selected_genre != "All genres":
-        filtered = filtered[
-            filtered["genres"].apply(
-                lambda value: selected_genre in str(value).split("|")
+    if search_query.strip():
+        catalog = catalog[
+            catalog["title"].str.contains(
+                re.escape(search_query.strip()),
+                case=False,
+                na=False,
             )
         ]
 
-    if rating_summary and not filtered.empty:
-        filtered["avg_rating"] = filtered["movieId"].map(
-            lambda mid: rating_summary.get(int(mid), {}).get("mean", 0)
+    if "community_rating" in catalog.columns:
+        catalog = catalog.sort_values(
+            ["rating_count", "community_rating"],
+            ascending=False,
+            na_position="last",
         )
 
-        filtered = filtered.sort_values(
-            ["avg_rating", "title"],
-            ascending=[False, True],
-        )
+    st.markdown("### 🍿 Explore the collection")
+    render_movie_grid(catalog, "discover", max_movies=20)
 
+
+# ----------------------- FOR YOU TAB ---------------------
+
+with tabs[1]:
+    st.markdown('<div class="section-title">Picked for your taste</div>', unsafe_allow_html=True)
     st.markdown(
-        f"## ✨ {selected_genre} movies"
-    )
-    render_cards(filtered, "discover", 10)
-
-    st.markdown("## 🎬 More to explore")
-    render_cards(
-        movies.sort_values("title").head(5),
-        "curated",
-        5,
+        '<div class="section-subtitle">Recommendations ranked using your saved collaborative-filtering model.</div>',
+        unsafe_allow_html=True,
     )
 
+    liked_seed_ids = get_user_rated_movies(user_id)
 
-# --------------------------------------------------
-# PERSONAL RECOMMENDATIONS
-# --------------------------------------------------
-elif page == "For You":
-    st.markdown(f"## 💜 Recommended for user {selected_user}")
+    if liked_seed_ids:
+        seed_names = [
+            str(movie_by_id.loc[mid, "title"])
+            for mid in liked_seed_ids[:5]
+        ]
+        st.info("Your highly rated movies help shape recommendations.")
+        st.caption("Profile favourites: " + " · ".join(seed_names))
 
-    st.caption(
-        "Recommendations come from your saved collaborative-filtering model. "
-        "Model scores are ranking scores, not probabilities or movie ratings."
+    recs = recommend_for_user(user_id, top_n=50)
+
+    if recs.empty:
+        st.warning(
+            "No recommendations could be generated for this profile. "
+            "Try a different MovieLens user."
+        )
+    else:
+        # Personalise the visible results by excluding explicit dislikes.
+        disliked_ids = {
+            mid for mid, reaction in st.session_state.reactions.items()
+            if reaction == "👎 Dislike"
+        }
+        recs = recs[~recs["movieId"].isin(disliked_ids)]
+
+        st.markdown("### ✨ Recommended for you")
+        render_movie_grid(recs, "foryou", max_movies=20)
+
+        # Different, useful secondary section.
+        st.markdown("### 🎬 Popular community favourites")
+        popular = movies.sort_values(
+            ["rating_count", "community_rating"],
+            ascending=False,
+            na_position="last",
+        )
+        popular = popular[~popular["movieId"].isin(st.session_state.watchlist)]
+        render_movie_grid(popular, "popular", max_movies=10)
+
+
+# ----------------------- BY GENRE TAB --------------------
+
+with tabs[2]:
+    st.markdown('<div class="section-title">Choose your mood</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-subtitle">Pick a genre and discover movies that fit the vibe.</div>',
+        unsafe_allow_html=True,
     )
 
-    recommendations = recommend_user(selected_user, 10)
-    render_cards(recommendations, "for_you", 10)
-
-
-# --------------------------------------------------
-# GENRE PAGE
-# --------------------------------------------------
-elif page == "By Genre":
-    genres = sorted({
-        genre
-        for value in movies["genres"]
-        for genre in str(value).split("|")
-        if genre and genre != "(no genres listed)"
+    genre_values = sorted({
+        genre.strip()
+        for genres in movies["genres"].dropna()
+        for genre in str(genres).split("|")
+        if genre.strip() and genre.strip() != "(no genres listed)"
     })
 
-    genre = st.selectbox(
-        "Choose a genre",
-        genres,
-        key="genre_page",
-    )
+    genre_cols = st.columns([1, 2, 1])
+    with genre_cols[1]:
+        selected_genre = st.selectbox(
+            "What would you like to watch?",
+            genre_values,
+            key="genre_tab_choice",
+        )
 
     genre_movies = movies[
-        movies["genres"].apply(
-            lambda value: genre in str(value).split("|")
+        movies["genres"].str.contains(
+            re.escape(selected_genre), case=False, na=False
         )
     ].copy()
 
-    if rating_summary and not genre_movies.empty:
-        genre_movies["avg_rating"] = genre_movies["movieId"].map(
-            lambda mid: rating_summary.get(int(mid), {}).get("mean", 0)
-        )
+    # Give each genre page a different feel using the genre's catalog.
+    if selected_genre in {"Action", "Adventure", "Sci-Fi", "Thriller"}:
+        st.info(f"⚡ High-energy picks for your {selected_genre} mood.")
+    elif selected_genre in {"Comedy", "Romance"}:
+        st.info(f"💫 Light-hearted picks for your {selected_genre} mood.")
+    elif selected_genre in {"Drama", "Mystery", "Crime"}:
+        st.info(f"🎭 Story-driven picks in {selected_genre}.")
+    else:
+        st.info(f"🌙 Explore the world of {selected_genre}.")
 
-        genre_movies = genre_movies.sort_values(
-            ["avg_rating", "title"],
-            ascending=[False, True],
-        )
+    genre_movies = genre_movies.sort_values(
+        ["rating_count", "community_rating"],
+        ascending=False,
+        na_position="last",
+    )
+    render_movie_grid(genre_movies, "genre", max_movies=20)
 
-    st.markdown(f"## 🎞️ Top {genre} movies")
-    render_cards(genre_movies, "genre", 10)
 
+# ----------------------- WATCHLIST TAB -------------------
 
-# --------------------------------------------------
-# WATCHLIST
-# --------------------------------------------------
-elif page == "My Watchlist":
-    st.markdown("## ❤️ Your Watchlist")
+with tabs[3]:
+    st.markdown('<div class="section-title">Your Watchlist</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-subtitle">Only the movies you saved. No recommendations here.</div>',
+        unsafe_allow_html=True,
+    )
 
-    saved_ids = [
-        int(str(key).rsplit("_", 1)[-1])
-        for key, value in st.session_state.items()
-        if key.startswith("reaction_watch_") and value is True
-    ]
+    saved_ids = sorted(st.session_state.watchlist)
 
-    saved_movies = movies[
-        movies["movieId"].isin(saved_ids)
-    ].drop_duplicates("movieId")
-
-    if saved_movies.empty:
+    if not saved_ids:
         st.info(
-            "Your watchlist is empty. Press ❤️ Watchlist "
-            "on any movie card to save a movie."
+            "Your Watchlist is empty. Open Discover or For You, "
+            "then use ❤️ Watchlist on a movie you want to save."
         )
     else:
-        render_cards(saved_movies, "watchlist", 10)
+        watchlist_movies = movies[movies["movieId"].isin(saved_ids)].copy()
+        render_movie_grid(watchlist_movies, "watchlist", max_movies=100)
 
 
-# --------------------------------------------------
-# FOOTER
-# --------------------------------------------------
-st.markdown("---")
+# ----------------------- NOTIFICATIONS TAB --------------
 
-st.markdown(
-    """
-    <div class="small-note" style="text-align:center">
-        CineMatch · Streamlit · Saved collaborative-filtering model<br>
-        Ratings shown are MovieLens community ratings on a 0–5 scale,
-        not IMDb ratings.<br>
-        Real posters require a TMDB API key in Streamlit Secrets.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+with tabs[4]:
+    st.markdown('<div class="section-title">Your notifications</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-subtitle">Updates about your reactions and saved movies.</div>',
+        unsafe_allow_html=True,
+    )
+
+    new_arrivals = movies.copy()
+    new_arrivals = new_arrivals[new_arrivals["year"].astype(str).str.isdigit()]
+    new_arrivals = new_arrivals[new_arrivals["year"].astype(int) >= 2015]
+    new_arrivals = new_arrivals.sort_values("year", ascending=False)
+
+    st.markdown("### 🆕 Newer titles in the catalog")
+    if new_arrivals.empty:
+        st.caption("No newer titles are available in the current catalog.")
+    else:
+        render_movie_grid(new_arrivals, "newtitles", max_movies=10)
+
+    st.markdown("### 🔔 Recent activity")
+    if st.session_state.notifications:
+        for notification in st.session_state.notifications:
+            st.info(notification, icon="🔔")
+    else:
+        st.caption("Your activity notifications will appear here.")
+
+
+# ----------------------- FOOTER --------------------------
+
+st.markdown("""
+<div class="footer">
+  <strong style="color:#ff8eaf;font-family:Outfit,sans-serif">
+    CineAura
+  </strong><br>
+  Built by <strong>Devadharshini Murugan</strong><br>
+  Discover · React · Save · Enjoy
+</div>
+""", unsafe_allow_html=True)
